@@ -11,6 +11,7 @@ const Analytics = () => {
   }
 
   const stats = analytics?.data?.overview || {};
+  const techStackStats = analytics?.data?.techStackStats || [];
 
   return (
     <div className="space-y-6">
@@ -75,6 +76,22 @@ const Analytics = () => {
             </LineChart>
           </ResponsiveContainer>
         </div>
+
+        {/* Tech Stack Distribution */}
+        {techStackStats.length > 0 && (
+          <div className="card lg:col-span-2">
+            <h3 className="text-lg font-semibold mb-4">Target Lead Technologies (Tech Stack Breakdown)</h3>
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={techStackStats}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="name" />
+                <YAxis label={{ value: 'Leads', angle: -90, position: 'insideLeft' }} />
+                <Tooltip cursor={{ fill: 'rgba(99, 102, 241, 0.05)' }} />
+                <Bar dataKey="value" fill="#6366f1" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
       </div>
 
       {/* Detailed Stats */}

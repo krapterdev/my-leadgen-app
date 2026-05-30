@@ -1,6 +1,7 @@
 const express = require('express');
 const Campaign = require('../models/Campaign');
 const EmailLog = require('../models/EmailLog');
+const Contact = require('../models/Contact');
 const auth = require('../middleware/auth');
 
 const router = express.Router();
@@ -48,6 +49,30 @@ router.get('/dashboard', auth, async (req, res) => {
       .sort({ sentAt: -1 })
       .limit(10);
 
+    // Tech Stack distribution aggregation
+    const contactsWithTech = await Contact.find({ 
+      userId, 
+      'customFields.techStack': { $exists: true, $ne: '' } 
+    }, 'customFields');
+    
+    const techCounts = {};
+    contactsWithTech.forEach(contact => {
+      const techStr = contact.customFields?.get('techStack') || '';
+      if (techStr) {
+        techStr.split(',').forEach(tech => {
+          const cleanTech = tech.trim();
+          if (cleanTech) {
+            techCounts[cleanTech] = (techCounts[cleanTech] || 0) + 1;
+          }
+        });
+      }
+    });
+    
+    const techStackStats = Object.keys(techCounts).map(name => ({
+      name,
+      value: techCounts[name]
+    })).sort((a, b) => b.value - a.value);
+
     res.json({
       overview: {
         totalCampaigns,
@@ -57,7 +82,8 @@ router.get('/dashboard', auth, async (req, res) => {
         clickRate: parseFloat(clickRate),
         replyRate: parseFloat(replyRate)
       },
-      recentActivity: recentEmails
+      recentActivity: recentEmails,
+      techStackStats
     });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });

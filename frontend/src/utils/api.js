@@ -55,6 +55,9 @@ export const contactAPI = {
   uploadCSV: (formData) => api.post('/contact/upload', formData),
   update: (id, data) => api.put(`/contact/${id}`, data),
   delete: (id) => api.delete(`/contact/${id}`),
+  bulkDelete: (ids) => api.post('/contact/bulk-delete', { ids }),
+  cleanTrash: () => api.post('/contact/clean-trash'),
+  scrape: (data) => api.post('/contact/scrape', data),
 };
 
 export const campaignAPI = {

@@ -199,6 +199,8 @@ async function sendUsingMailbox(mailboxId, to, subject, body, metadata = {}) {
   }
 }
 
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
 // Process email sequences
 async function processEmailSequences(options = {}) {
   const { campaignId, force = false } = options;
@@ -217,6 +219,10 @@ async function processEmailSequences(options = {}) {
     console.log(`Found ${activeCampaigns.length} active campaigns to process`);
 
     for (const campaign of activeCampaigns) {
+      if (!campaign.mailboxId) {
+        console.log(`⚠️ Campaign ${campaign.name} has no mailbox configured. Skipping.`);
+        continue;
+      }
       console.log(`Processing campaign: ${campaign.name} (${campaign.contacts.length} contacts)`);
       let processedCount = 0;
 
@@ -271,11 +277,39 @@ async function processEmailSequences(options = {}) {
           continue;
         }
 
-        console.log(`🚀 Sending Step ${nextStepNumber} to ${contact.email}...`);
+        // Check safety limit & perform dynamic rotation to other active mailboxes if throttled
+        let sendingMailboxId = campaign.mailboxId._id;
+        const rateLimitCheck = globalRateLimiter.canSend(sendingMailboxId, campaign.mailboxId.throttleSettings);
+        if (!rateLimitCheck.allowed) {
+          console.log(`⚠️ Mailbox ${campaign.mailboxId.email} throttled. Checking alternate verified mailboxes for user: ${campaign.userId}`);
+          const alternateMailboxes = await Mailbox.find({
+            userId: campaign.userId,
+            isVerified: true,
+            status: 'active',
+            _id: { $ne: sendingMailboxId }
+          });
+          
+          let rotated = false;
+          for (const altMailbox of alternateMailboxes) {
+            if (globalRateLimiter.canSend(altMailbox._id, altMailbox.throttleSettings).allowed) {
+              console.log(`🔄 Rotating SMTP sender to alternate mailbox: ${altMailbox.email}`);
+              sendingMailboxId = altMailbox._id;
+              rotated = true;
+              break;
+            }
+          }
+          
+          if (!rotated) {
+            console.log(`❌ All mailboxes are throttled for user: ${campaign.userId}. Skipping contact dispatch.`);
+            continue;
+          }
+        }
+
+        console.log(`🚀 Sending Step ${nextStepNumber} to ${contact.email} using mailbox ${sendingMailboxId}...`);
 
         // Send next step
         await sendUsingMailbox(
-          campaign.mailboxId._id,
+          sendingMailboxId,
           contact.email,
           nextStep.subject,
           nextStep.body,
@@ -287,6 +321,9 @@ async function processEmailSequences(options = {}) {
           }
         );
         processedCount++;
+        
+        // Add a 15-second safety delay to protect SMTP sender reputation from rapid spikes
+        await sleep(15000);
       }
       console.log(`Finished campaign ${campaign.name}: Sent ${processedCount} emails`);
     }

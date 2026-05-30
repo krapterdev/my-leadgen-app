@@ -24,10 +24,21 @@ const upload = multer({
 // Get all contacts
 router.get('/', auth, async (req, res) => {
   try {
-    const { page = 1, limit = 50, status, search } = req.query;
+    const { page = 1, limit = 50, status, search, businessType, location } = req.query;
     const query = { userId: req.user._id };
 
     if (status) query.status = status;
+    
+    // Filter by domain age category (businessType: STARTUP, ESTABLISHED, UNKNOWN)
+    if (businessType) {
+      query['customFields.businessType'] = businessType;
+    }
+    
+    // Filter by company location (GMB address)
+    if (location) {
+      query['customFields.address'] = { $regex: location, $options: 'i' };
+    }
+
     if (search) {
       query.$or = [
         { email: { $regex: search, $options: 'i' } },
@@ -209,6 +220,87 @@ router.delete('/:id', auth, async (req, res) => {
       return res.status(404).json({ message: 'Contact not found' });
     }
     res.json({ message: 'Contact deleted successfully' });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Bulk delete contacts
+router.post('/bulk-delete', auth, async (req, res) => {
+  try {
+    const { ids } = req.body;
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ message: 'No contact IDs provided' });
+    }
+    const result = await Contact.deleteMany({
+      _id: { $in: ids },
+      userId: req.user._id
+    });
+    res.json({ message: 'Contacts deleted successfully', deletedCount: result.deletedCount });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Clean trash contacts
+router.post('/clean-trash', auth, async (req, res) => {
+  try {
+    const query = {
+      userId: req.user._id,
+      $or: [
+        {
+          email: { $regex: '^info@', $options: 'i' },
+          $or: [
+            { 'customFields.phone': { $exists: false } },
+            { 'customFields.phone': '' }
+          ],
+          $or: [
+            { 'customFields.website': { $exists: false } },
+            { 'customFields.website': '' }
+          ]
+        },
+        {
+          email: { $exists: false },
+          phone: { $exists: false },
+          website: { $exists: false }
+        }
+      ]
+    };
+    const result = await Contact.deleteMany(query);
+    res.json({ message: `Database cleaning completed. Removed ${result.deletedCount} empty shell leads.`, deletedCount: result.deletedCount });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+const { exec } = require('child_process');
+
+// Trigger background scraper task
+router.post('/scrape', auth, async (req, res) => {
+  try {
+    const { query, maxResults = 20, useProxy = false } = req.body;
+    
+    if (!query) {
+      return res.status(400).json({ message: 'Search query is required' });
+    }
+    
+    // Command to run the trigger python script using the venv python
+    const cmd = `../scraper/venv/bin/python3 trigger_scrape.py --query "${query.replace(/"/g, '\\"')}" --max_results ${maxResults} --use_proxy ${useProxy}`;
+    
+    exec(cmd, { cwd: path.join(__dirname, '..') }, (error, stdout, stderr) => {
+      if (error) {
+        console.error('Failed to trigger scraper task:', error, stderr);
+        return res.status(500).json({ message: 'Failed to trigger scraper task', error: error.message });
+      }
+      
+      if (stdout.includes('ERROR:')) {
+        console.error('Scraper task error in Python:', stdout);
+        return res.status(500).json({ message: 'Failed to queue scraper task', details: stdout });
+      }
+      
+      console.log('Scraper task successfully queued:', stdout);
+      res.json({ message: 'Scraping task queued successfully in background' });
+    });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }

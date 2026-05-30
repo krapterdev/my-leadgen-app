@@ -1,259 +1,133 @@
-# MERN Email Outreach & Marketing Automation Platform
+# 🚀 MERN Email Outreach & Distributed OSINT Scraping Platform
 
-A full-featured email outreach and marketing automation platform built with the MERN stack (MongoDB, Express, React, Node.js).
+This repository is a production-grade, enterprise-scale Lead Generation and Email Outreach automation system. It bridges a high-performance **MERN Stack (MongoDB, Express, React, Node.js)** outbound marketing backend with an **asynchronous Python Celery & Playwright Stealth scraping engine**.
 
-## 🚀 Features
-
-### Core Features
-- **Multi-Provider Email Support**: Gmail, G Suite, Outlook, Office365, Yahoo, Custom SMTP
-- **One-Time Setup**: Store encrypted mailbox credentials and DNS settings once, use everywhere
-- **Multi-Step Email Sequences**: Create automated follow-up sequences with delays and conditions
-- **Advanced Tracking**: Open tracking, click tracking, reply detection via IMAP
-- **Contact Management**: CSV upload, deduplication, status management
-- **Analytics Dashboard**: Detailed performance metrics and campaign analytics
-- **DNS Configuration**: SPF, DKIM, DMARC, and tracking domain setup
-
-### Security Features
-- **Encrypted Credentials**: AES-256 encryption for email passwords
-- **JWT Authentication**: Secure user authentication
-- **Rate Limiting**: Protection against abuse
-- **Input Validation**: Comprehensive data validation
-
-### Automation Features
-- **IMAP Reply Detection**: Automatically stop sequences when replies are received
-- **Throttling**: Per-mailbox sending limits (hourly/daily)
-- **Scheduled Sending**: Background workers for sequence processing
-- **Campaign Management**: Start, pause, resume campaigns
-
-## 📦 Tech Stack
-
-### Backend
-- **Node.js** + **Express.js** - Server framework
-- **MongoDB** + **Mongoose** - Database
-- **Nodemailer** - Email sending
-- **IMAP-Simple** - Reply detection
-- **Node-Cron** - Scheduled tasks
-- **JWT** - Authentication
-- **Bcrypt** - Password hashing
-- **Crypto** - Credential encryption
-
-### Frontend
-- **React 18** - UI framework
-- **React Router** - Navigation
-- **React Query** - Data fetching
-- **React Hook Form** - Form handling
-- **Tailwind CSS** - Styling
-- **Recharts** - Analytics charts
-- **Lucide React** - Icons
-
-## 🛠 Installation & Setup
-
-### Prerequisites
-- Node.js (v16 or higher)
-- MongoDB (local or cloud)
-- Redis (for background jobs)
-
-### Backend Setup
-
-1. **Navigate to backend directory**
-   ```bash
-   cd backend
-   ```
-
-2. **Install dependencies**
-   ```bash
-   npm install
-   ```
-
-3. **Environment Configuration**
-   ```bash
-   cp .env.example .env
-   ```
-   
-   Update `.env` with your configuration:
-   ```env
-   NODE_ENV=development
-   PORT=5000
-   MONGODB_URI=mongodb://localhost:27017/email-outreach
-   JWT_SECRET=your-super-secret-jwt-key-change-this-in-production
-   ENCRYPTION_KEY=your-32-character-encryption-key-here
-   REDIS_URL=redis://localhost:6379
-   TRACKING_DOMAIN=track.yourdomain.com
-   BASE_URL=http://localhost:5000
-   ```
-
-4. **Start the server**
-   ```bash
-   npm run dev
-   ```
-
-### Frontend Setup
-
-1. **Navigate to frontend directory**
-   ```bash
-   cd frontend
-   ```
-
-2. **Install dependencies**
-   ```bash
-   npm install
-   ```
-
-3. **Start the development server**
-   ```bash
-   npm start
-   ```
-
-The application will be available at:
-- Frontend: http://localhost:3000
-- Backend API: http://localhost:5000
-
-## 📋 API Documentation
-
-### Authentication Endpoints
-- `POST /api/auth/register` - User registration
-- `POST /api/auth/login` - User login
-- `GET /api/auth/me` - Get current user
-
-### Mailbox Endpoints
-- `GET /api/mailbox` - Get all mailboxes
-- `POST /api/mailbox` - Add new mailbox
-- `POST /api/mailbox/:id/verify` - Verify mailbox
-- `DELETE /api/mailbox/:id` - Delete mailbox
-
-### Contact Endpoints
-- `GET /api/contact` - Get contacts (with pagination)
-- `POST /api/contact` - Add single contact
-- `POST /api/contact/upload` - Upload CSV
-- `PUT /api/contact/:id` - Update contact
-- `DELETE /api/contact/:id` - Delete contact
-
-### Campaign Endpoints
-- `GET /api/campaign` - Get all campaigns
-- `POST /api/campaign` - Create campaign
-- `GET /api/campaign/:id` - Get campaign details
-- `POST /api/campaign/:id/start` - Start campaign
-- `POST /api/campaign/:id/pause` - Pause campaign
-- `DELETE /api/campaign/:id` - Delete campaign
-
-### DNS Endpoints
-- `GET /api/dns` - Get DNS settings
-- `POST /api/dns` - Save DNS settings
-- `POST /api/dns/generate` - Generate DNS records
-- `POST /api/dns/:id/verify` - Verify DNS settings
-
-### Analytics Endpoints
-- `GET /api/analytics/dashboard` - Dashboard analytics
-- `GET /api/analytics/campaign/:id` - Campaign analytics
-
-### Tracking Endpoints
-- `GET /api/tracking/open/:logId` - Open tracking pixel
-- `GET /api/tracking/click/:logId` - Click tracking redirect
-- `GET /api/tracking/unsubscribe/:contactId` - Unsubscribe
-
-## 🔧 Configuration
-
-### Email Provider Settings
-The platform automatically configures SMTP/IMAP settings for popular providers:
-
-- **Gmail/G Suite**: smtp.gmail.com:587, imap.gmail.com:993
-- **Outlook**: smtp-mail.outlook.com:587, outlook.office365.com:993
-- **Office365**: smtp.office365.com:587, outlook.office365.com:993
-- **Yahoo**: smtp.mail.yahoo.com:587, imap.mail.yahoo.com:993
-
-### DNS Configuration
-For proper email delivery, configure these DNS records:
-
-1. **SPF Record** (TXT): `v=spf1 include:_spf.google.com include:spf.protection.outlook.com ~all`
-2. **DKIM Record** (TXT): Generated automatically
-3. **DMARC Record** (TXT): `v=DMARC1; p=quarantine; rua=mailto:dmarc@yourdomain.com`
-4. **Tracking Domain** (CNAME): Points to your server
-
-## 🚦 Usage
-
-### 1. Setup Mailboxes
-1. Go to **Mailboxes** page
-2. Click **Add Mailbox**
-3. Select provider and enter credentials
-4. Verify the mailbox
-
-### 2. Configure DNS
-1. Go to **DNS Settings** page
-2. Add your domain
-3. Generate DNS records
-4. Add records to your DNS provider
-5. Verify configuration
-
-### 3. Import Contacts
-1. Go to **Contacts** page
-2. Upload CSV file or add manually
-3. System automatically deduplicates
-
-### 4. Create Campaigns
-1. Go to **Campaigns** page
-2. Click **Create Campaign**
-3. Select mailbox and contacts
-4. Build email sequence
-5. Start campaign
-
-### 5. Monitor Performance
-1. Check **Dashboard** for overview
-2. Use **Analytics** for detailed metrics
-3. Monitor individual campaign performance
-
-## 🔒 Security Best Practices
-
-1. **Use App Passwords**: For Gmail/Outlook, use app-specific passwords
-2. **Secure Environment**: Keep `.env` file secure and never commit it
-3. **Regular Updates**: Keep dependencies updated
-4. **Rate Limiting**: Configure appropriate sending limits
-5. **DNS Security**: Properly configure SPF, DKIM, and DMARC
-
-## 🐛 Troubleshooting
-
-### Common Issues
-
-1. **Email Not Sending**
-   - Verify mailbox credentials
-   - Check SMTP settings
-   - Ensure app passwords are used
-
-2. **Tracking Not Working**
-   - Verify tracking domain DNS
-   - Check BASE_URL configuration
-   - Ensure tracking is enabled
-
-3. **Reply Detection Issues**
-   - Verify IMAP settings
-   - Check IMAP worker is running
-   - Ensure proper message threading
-
-## 📈 Performance Optimization
-
-1. **Database Indexing**: Indexes are automatically created
-2. **Connection Pooling**: MongoDB connection pooling enabled
-3. **Caching**: Implement Redis caching for frequently accessed data
-4. **Background Jobs**: Use Bull queues for heavy operations
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests if applicable
-5. Submit a pull request
-
-## 📄 License
-
-This project is licensed under the MIT License.
-
-## 🆘 Support
-
-For support and questions:
-- Create an issue on GitHub
-- Check the documentation
-- Review the troubleshooting section
+Designed to scrape, enrich, deduplicate, and run warm email outreach to thousands of companies at **zero cost** without getting blocked.
 
 ---
 
-**Built with ❤️ using the MERN stack**
+## 🏗️ System Architecture & Data Flow
+
+Below is the architectural representation of how data is fetched from Google Maps (GMB), processed through the anti-duplication pipeline, saved to MongoDB, and automatically targeted for warm outreach.
+
+```mermaid
+graph TD
+    A[Celery Scraping Task initiated] --> B[Playwright Stealth Browser launched]
+    B --> C[Search Google Maps GMB results]
+    C --> D[Extract Name, Website, Phone, Address]
+    D --> E{Website exists?}
+    E -- Yes --> F[Normalize Website URL]
+    E -- No --> J[Fallback: Generate dummy email & save]
+    
+    F --> G{Redis Bloom Filter check}
+    G -- "Exists (Duplicate)" --> H[Skip & Continue Scroll]
+    G -- "Not Exists" --> I[Mark URL in Bloom Filter/Set]
+    
+    I --> J[Save Lead to MongoDB contacts collection]
+    J --> K[Available on React Admin Dashboard]
+    K --> L[Nodemailer Email Worker sends SMTP mail via Gmail/Outlook]
+    L --> M[IMAP Reply Detection Worker tracks replies & halts sequence]
+```
+
+---
+
+## 🛠️ Core Technology Stack
+
+### 1. Web App Backend & Frontend (Warm Outreach & Admin UI)
+* **React 18 + Tailwind CSS**: A premium, clean dashboard for managing mailboxes, tracking open/click rates, uploading CSVs, and configuring automated multi-step sequences.
+* **Node.js + Express**: Core REST API handling authentication, campaign orchestrations, DNS configurations, and rate-limiting.
+* **MongoDB (Mongoose)**: Document database storing campaigns, users, templates, mailboxes, and scraped contacts.
+* **Nodemailer + IMAP-Simple**: Handles warm email sending (via custom SMTP/Gmail App Passwords) and asynchronously polls mailboxes to detect replies and dynamically stop outreach sequences.
+
+### 2. Scraping & Automation Engine (Background Workers)
+* **Celery (Python)**: Event-driven distributed task manager. Runs background scraping jobs concurrently.
+* **Redis**: Used as both the Celery message broker and the high-speed deduplication layer.
+* **Playwright + Playwright-Stealth**: Headless browser automation mimicking natural human interactions (random delays, scrolling, customized viewport sizes, and user-agent rotations) to bypass modern bot-detection engines.
+* **Redis Bloom Filter (or Set Fallback)**: Checks millions of websites in sub-milliseconds to avoid scraping or emailing the same company twice.
+
+---
+
+## 🛡️ Anti-Blocking & Human Simulation Strategies
+
+To extract data scale (10,000+ records) continuously without IP blocks or CAPTCHA challenges, the engine implements these strategies:
+
+1. **User-Agent Rotation**: Every browser context rotates clean, real-world user-agent strings representing Chrome, Firefox, and Safari on various desktop platforms.
+2. **Playwright-Stealth**: Modifies javascript bindings, WebGL fingerprints, canvas APIs, and navigator values (`navigator.webdriver = false`) to hide browser automation signatures.
+3. **Randomized Throttling (Human Typing & Scrolling)**: Inserts natural human delays (`random.uniform(2.0, 4.5)` seconds) between search clicks, scrolls, and interactions, avoiding predictable bot signatures.
+4. **Natural Mouse and Scroll Simulations**: Emulates soft mouse clicks and uses relative scrolling rather than instantaneous page jumps.
+
+---
+
+## 🗂️ Project Directory Layout
+
+```bash
+my-leadgen-app/
+├── backend/                  # Node.js Core Backend
+│   ├── app/
+│   │   └── workers/          # Python Background Workers
+│   │       ├── celery_app.py # Celery initialization
+│   │       └── automation/
+│   │           └── scraper.py# GMB Playwright Stealth Scraper
+│   ├── models/               # Mongoose DB Schemas
+│   ├── routes/               # Express API Endpoints
+│   ├── workers/              # Node Workers (Email sending & IMAP reply detection)
+│   ├── test_scraper.py       # Standalone Scraper Tester
+│   └── requirements.txt      # Python Scraper dependencies
+├── frontend/                 # React UI Dashboard (Tailwind CSS)
+├── scraper/                  # Python Venv Directory
+└── README.md                 # System Architecture & Documentation
+```
+
+---
+
+## ⚡ How to Setup & Run
+
+### Prerequisites
+- Node.js (v18+)
+- Python (3.10+)
+- Docker & Docker Compose
+
+### 1. Spin up MongoDB and Redis Containers
+Make sure your Docker daemon is running, and start the services:
+```bash
+docker start my-mongodb my-redis
+```
+
+### 2. Configure Node.js Backend & Run
+```bash
+cd backend
+npm install
+npm run dev
+```
+
+### 3. Run the Scraper Test Script (Standalone verification)
+To verify that Playwright is fetching and storing leads into MongoDB:
+```bash
+cd backend
+PYTHONPATH=. ../scraper/venv/bin/python test_scraper.py
+```
+
+### 4. Run the Celery Worker
+To start processing tasks asynchronously:
+```bash
+cd backend
+PYTHONPATH=. ../scraper/venv/bin/celery -A app.workers.celery_app worker --loglevel=info
+```
+
+---
+
+## 🎓 Interview Cheat Sheet: "How does the System Work?"
+
+If an interviewer asks how you built this, here is your playbook:
+
+#### Q1: "How did you scale the lead generation without third-party API costs?"
+> *"I built a distributed scraping engine using Python, Playwright, and Celery. Instead of using expensive lead databases or scrapers, I automated headless browsers to query public business directories (like Google Maps), extract details, and save them directly to our database."*
+
+#### Q2: "How did you prevent scraping and emailing the same lead twice?"
+> *"I implemented a high-performance Redis cache layer. Whenever a company's website is found, it's checked against a Redis Bloom Filter (or a Redis Set). The check completes in sub-milliseconds, allowing the scraper to immediately skip duplicates without querying our primary MongoDB database, saving significant I/O."*
+
+#### Q3: "How did you bypass anti-bot mechanisms like IP blocks or CAPTCHAs?"
+> *"We simulate natural human behavior. We use `playwright-stealth` to strip out automated headers (`navigator.webdriver`), rotate real desktop User-Agents, and simulate human interactions by applying randomized sleep intervals (auto-throttling) and realistic scrolls. If scraping at an extreme scale, we route requests through a rotating proxy middleware."*
+
+#### Q4: "How does the email outreach automation flow work?"
+> *"Once contacts are added to MongoDB (either from the scraper or CSV upload), Express triggers an email outreach sequence. An asynchronous worker runs every 5 minutes using Node-Cron, sending personalized warm emails using SMTP. Simultaneously, an IMAP worker monitors the mailbox inbox; if a contact replies, their status immediately changes to 'replied', automatically pausing their email sequence."*
