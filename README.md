@@ -131,3 +131,65 @@ If an interviewer asks how you built this, here is your playbook:
 
 #### Q4: "How does the email outreach automation flow work?"
 > *"Once contacts are added to MongoDB (either from the scraper or CSV upload), Express triggers an email outreach sequence. An asynchronous worker runs every 5 minutes using Node-Cron, sending personalized warm emails using SMTP. Simultaneously, an IMAP worker monitors the mailbox inbox; if a contact replies, their status immediately changes to 'replied', automatically pausing their email sequence."*
+
+---
+
+## 🏁 Step-by-Step Project Explanation & Execution Guide (Hindi & English)
+
+### 📌 Project Kya Hai? (What is this project?)
+Yeh project ek **Automated Lead Generation and Outreach Platform** hai. Iske do main parts hain:
+1. **Node.js/React App (Outreach & Dashboard)**: Jahan aap campaigns create karte ho, mailboxes attach karte ho (Gmail/Outlook), dashboard me status dekhte ho, aur emails automatic schedule hote hain.
+2. **Python/Playwright Scraper & Celery (Lead Finder)**: Jo Google Maps par search karke automatically company ke details (Name, Website, Phone, Rating) nikalta hai aur unhe direct database (MongoDB) me save kar deta hai bina block hue. Redis duplicates check karta hai taaki same client ko do baar mail na jaye.
+
+---
+
+### 🚀 Step-by-Step Project Run Kaise Karein? (Execution Steps)
+
+#### **Step 1: Docker Containers Start Karein**
+Sabse pehle check karein ki Docker Desktop chal raha hai, fir WSL terminal khol kar MongoDB aur Redis start karein:
+```bash
+docker start my-mongodb my-redis
+```
+* **Kyun?**: MongoDB aapki lead directory aur configuration store karega. Redis queues aur anti-duplicate caches manage karega.
+
+---
+
+#### **Step 2: Node.js Backend Server Chalaein**
+Terminal me `backend` folder me jayein aur application server start karein:
+```bash
+cd backend
+npm install
+npm run dev
+```
+* **Kyun?**: Isse Express API start ho jayegi port `5001` par jo client requests handle karegi, aur background me Email/IMAP sending workers start honge.
+
+---
+
+#### **Step 3: Frontend Dashboard Chalaein**
+Ek naya terminal khol kar `frontend` folder me jayein aur interface start karein:
+```bash
+cd frontend
+npm install
+npm start
+```
+* **Kyun?**: Isse aapka outreach portal `http://localhost:3000` par run hoga jahan aap live analytics, leads list aur mailbox settings dekh sakte hain.
+
+---
+
+#### **Step 4: Scraper Test Run (Direct Testing)**
+Agar aapko testing karni hai ki scraper data nikal kar DB me daal raha hai ya nahi, to python script directly execute karein:
+```bash
+cd backend
+PYTHONPATH=. ../scraper/venv/bin/python test_scraper.py
+```
+* **Kyun?**: Yeh script Google Maps search page open karke data scrape karegi, use Redis me duplicate check karegi, aur nayi companies ko MongoDB `contacts` table me insert karegi.
+
+---
+
+#### **Step 5: Distributed Background Workers Setup (Celery & Redis)**
+Agar aap distributed scraping tasks background me queue ke through trigger karna chahte hain:
+```bash
+cd backend
+PYTHONPATH=. ../scraper/venv/bin/celery -A app.workers.celery_app worker --loglevel=info
+```
+* **Kyun?**: Yeh celery worker background me running rahega. Jab bhi aap dashboard ya console se scraping trigger karenge, tasks automatically Redis pipeline ke through execute honge.
