@@ -25,6 +25,10 @@ const contactSchema = new mongoose.Schema({
   customFields: {
     type: Map,
     of: String
+  },
+  batchId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'ScraperBatch'
   }
 }, {
   timestamps: true

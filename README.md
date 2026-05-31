@@ -216,8 +216,24 @@ Agar aap is project par naye hain, to yaha step-by-step bataya gaya hai ki dashb
 
 1. **Step 1: Sign up & Login**: First time running par register page par jakar naya user account banayein aur dashboard me login karein.
 2. **Step 2: Connect Mailbox**: `Mailboxes` menu me jayein, "Add Mailbox" par click karein, and details verify karein.
-3. **Step 3: Collect Leads**: `Contacts` menu me jayein, "Launch Scraper" click karein, search query daalein, aur Celery background scraping chalayein.
-4. **Step 4: Create Template**: `Templates` menu me outreach template (with variables like `{{firstName}}`) banayein.
-5. **Step 5: Launch Campaign**: `Campaigns` menu me jayein, "Create Campaign" click karein, sequence schedule karein aur use active karein.
-6. **Step 6: Track & Manage Replies**: Background cron worker har 5 min me campaign chalaega, log verification `Email History` me dekhein, aur responses `Replies` menu me control karein.
-7. **Step 7: Database Management**: Dashboard ke **Database (Mongo)** side link par click karein. Username: `admin` aur Password: `pass` enter karke local data collections manage karein.
+3. **Step 3: Collect Leads**: `Contacts` menu me jayein, "Launch Scraper" click karein. Ab aapko **Search Query** (e.g. `Software Companies`) aur **Location** (e.g. `Noida`) ke do alag fields milenge. Inhe fill karke Celery background scraping chalayein.
+4. **Step 4: Batch Management**: Har scraping job ek unique batch banayegi. Aap `Contacts` page par "All Scraper Batches" dropdown me se kisi ek batch ko select karke leads ko filter kar sakte hain. Data mix nahi hoga.
+5. **Step 5: Create Template**: `Templates` menu me outreach template (with variables like `{{firstName}}`) banayein.
+6. **Step 6: Launch Campaign**: `Campaigns` menu me jayein, "Create Campaign" click karein. Step 3 (Select Contacts) me **Select by Scraper Batch** option choose karein aur dropdown se apni target batch select karein. Isse us batch ke saare contacts automatic select ho jayenge.
+7. **Step 7: Track & Manage Replies**: Background cron worker har 5 min me campaign chalaega, log verification `Email History` me dekhein, aur responses `Replies` menu me control karein.
+8. **Step 8: Database Management**: Dashboard ke **Database (Mongo)** side link par click karein. Username: `admin` aur Password: `pass` enter karke local data collections manage karein.
+
+---
+
+## 🛠️ Troubleshooting & Issues
+
+### 1. Redis Port 6379 Conflict (Address Already in Use)
+Agar docker-compose status check karte time `my-redis` end-point par `address already in use` error aaye, toh iska matlab aapke WSL environment me native redis-server running state me hai.
+Ise fix karne ke liye apne WSL terminal me yeh command run karein:
+```bash
+sudo service redis-server stop
+```
+Iske baad dobara docker containers start karein:
+```bash
+docker start my-mongodb my-redis my-mongo-express
+```

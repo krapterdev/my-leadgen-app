@@ -13,6 +13,8 @@ if __name__ == "__main__":
     parser.add_argument("--max_results", type=int, default=20, help="Max results")
     parser.add_argument("--use_proxy", type=str, default="false", help="Use proxy (true/false)")
     parser.add_argument("--user_id", default=None, help="User ID to broadcast progress to")
+    parser.add_argument("--location", default="", help="Scraping location")
+    parser.add_argument("--batch_id", default=None, help="Scraper batch ID")
     
     args = parser.parse_args()
     
@@ -25,7 +27,12 @@ if __name__ == "__main__":
         result = celery_app.send_task(
             "app.workers.automation.scraper.scrape_gmb_task",
             args=[args.query, args.max_results],
-            kwargs={"user_id": args.user_id}
+            kwargs={
+                "use_proxy": use_proxy_bool,
+                "user_id": args.user_id,
+                "location": args.location,
+                "batch_id": args.batch_id
+            }
         )
         print(f"SUCCESS: Celery task triggered. Task ID: {result.id}")
     except Exception as e:

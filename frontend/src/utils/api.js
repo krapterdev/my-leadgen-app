@@ -58,6 +58,7 @@ export const contactAPI = {
   bulkDelete: (ids) => api.post('/contact/bulk-delete', { ids }),
   cleanTrash: () => api.post('/contact/clean-trash'),
   scrape: (data) => api.post('/contact/scrape', data),
+  getBatches: () => api.get('/contact/batches'),
 };
 
 export const campaignAPI = {

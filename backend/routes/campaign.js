@@ -59,14 +59,15 @@ router.get('/', auth, async (req, res) => {
 // Create campaign
 router.post('/', auth, async (req, res) => {
   try {
-    const { name, mailboxId, sequence, contactIds } = req.body;
+    const { name, mailboxId, sequence, contactIds, batchId } = req.body;
 
     const campaign = new Campaign({
       userId: req.user._id,
       name,
       mailboxId,
       sequence,
-      contacts: contactIds
+      contacts: contactIds,
+      batchId: batchId || undefined
     });
 
     await campaign.save();

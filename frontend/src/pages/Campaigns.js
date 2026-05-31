@@ -364,10 +364,12 @@ const Campaigns = () => {
 
 const CreateCampaignForm = ({ onCancel, onSuccess }) => {
   const [step, setStep] = useState(1);
+  const [targetType, setTargetType] = useState('manual'); // 'manual' or 'batch'
   const [campaignData, setCampaignData] = useState({
     name: '',
     mailboxId: '',
     contactIds: [],
+    batchId: '',
     sequence: [
       {
         stepNumber: 1,
@@ -381,9 +383,29 @@ const CreateCampaignForm = ({ onCancel, onSuccess }) => {
 
   const { data: mailboxes } = useQuery('mailboxes', mailboxAPI.getAll);
   const { data: contactsData } = useQuery('contacts', () => contactAPI.getAll({ limit: 1000 }));
+  const { data: batchesResponse } = useQuery('batches', contactAPI.getBatches);
   const { data: templatesData } = useQuery('templates', () => fetch('/api/template', {
     headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
   }).then(res => res.json()));
+
+  const handleBatchSelect = async (batchId) => {
+    setCampaignData(prev => ({ ...prev, batchId, contactIds: [] }));
+    if (!batchId) return;
+    
+    const loadToast = toast.loading('Fetching contacts from selected batch...');
+    try {
+      const response = await contactAPI.getAll({ batchId, limit: 1000 });
+      const batchContacts = response.data?.contacts || [];
+      const contactIds = batchContacts.map(c => c._id);
+      setCampaignData(prev => ({
+        ...prev,
+        contactIds
+      }));
+      toast.success(`Selected ${contactIds.length} contacts from batch`, { id: loadToast });
+    } catch (err) {
+      toast.error('Failed to load batch contacts: ' + err.message, { id: loadToast });
+    }
+  };
   
   const createMutation = useMutation(campaignAPI.create, {
     onSuccess: () => {
@@ -543,35 +565,104 @@ const CreateCampaignForm = ({ onCancel, onSuccess }) => {
 
       {step === 3 && (
         <div className="space-y-4">
-          <h3 className="font-medium">Select Contacts ({campaignData.contactIds.length} selected)</h3>
-          <div className="max-h-64 overflow-y-auto border rounded-lg">
-            {contacts.map((contact) => (
-              <label key={contact._id} className="flex items-center p-3 hover:bg-gray-50">
-                <input
-                  type="checkbox"
-                  checked={campaignData.contactIds.includes(contact._id)}
-                  onChange={(e) => {
-                    if (e.target.checked) {
-                      setCampaignData({
-                        ...campaignData,
-                        contactIds: [...campaignData.contactIds, contact._id]
-                      });
-                    } else {
-                      setCampaignData({
-                        ...campaignData,
-                        contactIds: campaignData.contactIds.filter(id => id !== contact._id)
-                      });
-                    }
-                  }}
-                  className="mr-3"
-                />
-                <div>
-                  <div className="font-medium">{contact.firstName} {contact.lastName}</div>
-                  <div className="text-sm text-gray-500">{contact.email}</div>
-                </div>
-              </label>
-            ))}
+          <div className="flex space-x-4 mb-4 border-b pb-2">
+            <button
+              type="button"
+              onClick={() => {
+                setTargetType('manual');
+                setCampaignData(prev => ({ ...prev, batchId: '', contactIds: [] }));
+              }}
+              className={`pb-2 px-1 font-semibold text-sm border-b-2 ${
+                targetType === 'manual' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500'
+              }`}
+            >
+              Manual Select ({contacts.length} total)
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setTargetType('batch');
+                setCampaignData(prev => ({ ...prev, contactIds: [] }));
+              }}
+              className={`pb-2 px-1 font-semibold text-sm border-b-2 ${
+                targetType === 'batch' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500'
+              }`}
+            >
+              Select by Scraper Batch ({batches.length} batches)
+            </button>
           </div>
+
+          {targetType === 'manual' ? (
+            <>
+              <h3 className="font-medium">Select Contacts ({campaignData.contactIds.length} selected)</h3>
+              <div className="max-h-64 overflow-y-auto border rounded-lg">
+                {contacts.map((contact) => (
+                  <label key={contact._id} className="flex items-center p-3 hover:bg-gray-50">
+                    <input
+                      type="checkbox"
+                      checked={campaignData.contactIds.includes(contact._id)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setCampaignData({
+                            ...campaignData,
+                            contactIds: [...campaignData.contactIds, contact._id]
+                          });
+                        } else {
+                          setCampaignData({
+                            ...campaignData,
+                            contactIds: campaignData.contactIds.filter(id => id !== contact._id)
+                          });
+                        }
+                      }}
+                      className="mr-3"
+                    />
+                    <div>
+                      <div className="font-medium">{contact.firstName} {contact.lastName}</div>
+                      <div className="text-sm text-gray-500">{contact.email}</div>
+                    </div>
+                  </label>
+                ))}
+              </div>
+            </>
+          ) : (
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Target Scraper Batch</label>
+                <select
+                  value={campaignData.batchId}
+                  onChange={(e) => handleBatchSelect(e.target.value)}
+                  className="input-field border-indigo-200 focus:border-indigo-500 bg-indigo-50/5 text-indigo-950 font-medium"
+                >
+                  <option value="">Choose a scraper batch...</option>
+                  {batches.map((batch) => (
+                    <option key={batch._id} value={batch._id}>
+                      {batch.query} [{batch.location}] ({batch.count} leads) - {new Date(batch.createdAt).toLocaleDateString()}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {campaignData.contactIds.length > 0 && (
+                <div className="space-y-2">
+                  <h4 className="text-sm font-semibold text-gray-700">
+                    Contacts in Batch ({campaignData.contactIds.length} selected):
+                  </h4>
+                  <div className="max-h-48 overflow-y-auto border rounded-lg bg-gray-50 divide-y divide-gray-200">
+                    {contacts
+                      .filter((c) => campaignData.contactIds.includes(c._id))
+                      .map((contact) => (
+                        <div key={contact._id} className="p-3 flex justify-between text-sm">
+                          <span className="font-semibold text-gray-900">
+                            {contact.firstName} {contact.lastName}
+                          </span>
+                          <span className="text-gray-500">{contact.email}</span>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 

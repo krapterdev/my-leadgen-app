@@ -44,6 +44,10 @@ const campaignSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Contact'
   }],
+  batchId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'ScraperBatch'
+  },
   status: {
     type: String,
     enum: ['draft', 'active', 'paused', 'stopped', 'completed'],

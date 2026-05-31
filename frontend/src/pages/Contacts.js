@@ -12,6 +12,7 @@ const Contacts = () => {
   const [search, setSearch] = useState('');
   const [businessType, setBusinessType] = useState('');
   const [location, setLocation] = useState('');
+  const [selectedBatchId, setSelectedBatchId] = useState('');
   const [page, setPage] = useState(1);
   const [selectedContacts, setSelectedContacts] = useState([]);
   const queryClient = useQueryClient();
@@ -61,19 +62,23 @@ const Contacts = () => {
   }, [queryClient]);
 
   const { data: contactsData, isLoading } = useQuery(
-    ['contacts', { page, search, businessType, location }],
-    () => contactAPI.getAll({ page, search, businessType, location, limit: 20 }),
+    ['contacts', { page, search, businessType, location, batchId: selectedBatchId }],
+    () => contactAPI.getAll({ page, search, businessType, location, batchId: selectedBatchId, limit: 20 }),
     { keepPreviousData: true }
   );
+
+  const { data: batchesResponse } = useQuery('batches', contactAPI.getBatches);
+  const batches = batchesResponse?.data?.data || [];
 
   // Clear selections when filter or pagination changes
   useEffect(() => {
     setSelectedContacts([]);
-  }, [page, search, businessType, location]);
+  }, [page, search, businessType, location, selectedBatchId]);
 
   const scrapeMutation = useMutation(contactAPI.scrape, {
     onSuccess: () => {
       setShowScraper(false);
+      queryClient.invalidateQueries('batches');
       toast.success('Scraper task successfully queued in the background! Leads will populate shortly.');
     },
     onError: (error) => {
@@ -385,7 +390,7 @@ const Contacts = () => {
       )}
 
       {/* Filters and Search Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
           <input
@@ -395,6 +400,21 @@ const Contacts = () => {
             onChange={(e) => { setSearch(e.target.value); setPage(1); }}
             className="input-field pl-10"
           />
+        </div>
+
+        <div>
+          <select
+            value={selectedBatchId}
+            onChange={(e) => { setSelectedBatchId(e.target.value); setPage(1); }}
+            className="input-field border-indigo-100 bg-indigo-50/5 text-indigo-950 font-medium"
+          >
+            <option value="">All Scraper Batches</option>
+            {batches.map((batch) => (
+              <option key={batch._id} value={batch._id}>
+                {batch.query} [{batch.location}] ({batch.count} leads)
+              </option>
+            ))}
+          </select>
         </div>
 
         <div>
@@ -804,13 +824,14 @@ const UploadCSVForm = ({ onSubmit, onCancel, loading }) => {
 const ScraperForm = ({ onSubmit, onCancel, loading }) => {
   const [formData, setFormData] = useState({
     query: '',
+    location: '',
     maxResults: 20,
     useProxy: false
   });
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!formData.query) return;
+    if (!formData.query || !formData.location) return;
     onSubmit(formData);
   };
 
@@ -826,14 +847,25 @@ const ScraperForm = ({ onSubmit, onCancel, loading }) => {
         </span>
       </div>
       <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="md:col-span-2">
             <label className="block text-sm font-medium text-gray-700 mb-1">Search Query</label>
             <input
               type="text"
-              placeholder="e.g. Web Development Companies in Noida"
+              placeholder="e.g. Software Companies, Gyms, Cafes"
               value={formData.query}
               onChange={(e) => setFormData({...formData, query: e.target.value})}
+              className="input-field border-indigo-200 focus:border-indigo-500"
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Location</label>
+            <input
+              type="text"
+              placeholder="e.g. Noida, Gurugram, Delhi"
+              value={formData.location}
+              onChange={(e) => setFormData({...formData, location: e.target.value})}
               className="input-field border-indigo-200 focus:border-indigo-500"
               required
             />
@@ -871,7 +903,7 @@ const ScraperForm = ({ onSubmit, onCancel, loading }) => {
           </button>
           <button 
             type="submit" 
-            disabled={loading || !formData.query} 
+            disabled={loading || !formData.query || !formData.location} 
             className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-4 rounded shadow disabled:opacity-50 flex items-center transition-colors"
           >
             {loading ? 'Queueing Scraper...' : 'Launch Scraper Job'}

@@ -614,7 +614,7 @@ def human_click(element):
 
 # ----------------- DB PERSISTENCE -----------------
 
-def save_lead_to_mongo(company_data, user_id=None):
+def save_lead_to_mongo(company_data, user_id=None, batch_id=None):
     """Save lead matching MongoDB schema in Contact.js."""
     try:
         client = MongoClient(MONGODB_URI)
@@ -685,6 +685,13 @@ def save_lead_to_mongo(company_data, user_id=None):
             }
         }
         
+        if batch_id:
+            try:
+                from bson.objectid import ObjectId
+                contact_doc["batchId"] = ObjectId(batch_id)
+            except Exception as batch_err:
+                logger.error(f"Invalid batch_id format: {batch_id}")
+        
         existing = contacts_col.find_one({"userId": target_user_id, "email": contact_doc["email"]})
         if existing:
             logger.info(f"Lead with email {contact_doc['email']} already exists. Skipping insertion.")
@@ -692,6 +699,16 @@ def save_lead_to_mongo(company_data, user_id=None):
             
         contacts_col.insert_one(contact_doc)
         logger.info(f"Saved GMB Lead: {company_data['name']} ({contact_doc['email']})")
+        
+        if batch_id:
+            try:
+                db["scraperbatches"].update_one(
+                    {"_id": ObjectId(batch_id)},
+                    {"$inc": {"count": 1}}
+                )
+            except Exception as inc_err:
+                logger.error(f"Failed to increment batch count: {inc_err}")
+                
         return True
     except Exception as e:
         logger.error(f"Failed to save lead: {e}")
@@ -753,13 +770,13 @@ def launch_stealth_browser(playwright_instance, proxy_dict=None):
 # ----------------- CELERY SCRAPING TASK -----------------
 
 @celery_app.task(name="app.workers.automation.scraper.scrape_gmb_task", bind=True)
-def scrape_gmb_task(self, query: str, max_results: int = 20, use_proxy: bool = False, user_id: str = None):
+def scrape_gmb_task(self, query: str, max_results: int = 20, use_proxy: bool = False, user_id: str = None, location: str = "", batch_id: str = None):
     """
     Celery task to scrape Google Maps (GMB) for the given search query.
     Uses proxy rotation (if enabled), anti-fingerprinting stealth,
     and Bloom filters for URL duplicate check.
     """
-    logger.info(f"Scrape GMB Task triggered: Query='{query}', Max={max_results}, Proxy={use_proxy}, UserID={user_id}")
+    logger.info(f"Scrape GMB Task triggered: Query='{query}', Location='{location}', Max={max_results}, Proxy={use_proxy}, UserID={user_id}, BatchID={batch_id}")
     send_progress_update(user_id, "STARTED", progress=0, total=max_results, message="Scraping task initialized...")
     
     results = []
@@ -780,9 +797,10 @@ def scrape_gmb_task(self, query: str, max_results: int = 20, use_proxy: bool = F
             send_progress_update(user_id, "FAILED", progress=0, total=max_results, message=f"Failed to launch browser: {browser_err}")
             return []
             
-        search_url = f"https://www.google.com/maps/search/{urllib.parse.quote_plus(query)}"
+        combined_query = f"{query} in {location}" if location else query
+        search_url = f"https://www.google.com/maps/search/{urllib.parse.quote_plus(combined_query)}"
         logger.info(f"Searching maps: {search_url}")
-        send_progress_update(user_id, "SEARCHING", progress=0, total=max_results, message=f"Searching Google Maps for '{query}'...")
+        send_progress_update(user_id, "SEARCHING", progress=0, total=max_results, message=f"Searching Google Maps for '{combined_query}'...")
         
         try:
             loaded = False
@@ -927,6 +945,9 @@ def scrape_gmb_task(self, query: str, max_results: int = 20, use_proxy: bool = F
                         upgrade_priority = "LOW"
                         personalized_pitch = ""
                         outreach_hook = ""
+                        hiring_intent = "NO"
+                        hiring_intent_score = 0
+                        careers_url = ""
 
                         if website:
                             parsed_web = urllib.parse.urlparse(website)
@@ -1053,7 +1074,7 @@ def scrape_gmb_task(self, query: str, max_results: int = 20, use_proxy: bool = F
                         logger.info(f"Scraped details: {company_name} | URL: {website} | Phone: {phone}")
                         
                         if website or phone:
-                            save_lead_to_mongo(company_data, user_id=user_id)
+                            save_lead_to_mongo(company_data, user_id=user_id, batch_id=batch_id)
                             results.append(company_data)
                             send_progress_update(user_id, "PROGRESS", company=company_data, progress=len(results), total=max_results, message=f"Saved lead: {company_name}")
                             
@@ -1074,6 +1095,15 @@ def scrape_gmb_task(self, query: str, max_results: int = 20, use_proxy: bool = F
         except Exception as main_err:
             logger.error(f"Error during search navigation/parsing: {main_err}")
             send_progress_update(user_id, "FAILED", progress=len(results), total=max_results, message=f"Scraper error: {str(main_err)}")
+            if batch_id:
+                try:
+                    from bson.objectid import ObjectId
+                    db["scraperbatches"].update_one(
+                        {"_id": ObjectId(batch_id)},
+                        {"$set": {"status": "failed", "errorMessage": str(main_err)}}
+                    )
+                except Exception as batch_err:
+                    logger.error(f"Failed to update batch status to failed: {batch_err}")
         finally:
             try:
                 browser.close()
@@ -1082,6 +1112,16 @@ def scrape_gmb_task(self, query: str, max_results: int = 20, use_proxy: bool = F
                 
     logger.info(f"Finished GMB scrape task. Added {len(results)} new leads.")
     send_progress_update(user_id, "COMPLETED", progress=len(results), total=max_results, message=f"Scraping completed. Added {len(results)} new leads.")
+    if batch_id:
+        try:
+            from bson.objectid import ObjectId
+            # Only update status to completed if it's currently 'running'
+            db["scraperbatches"].update_one(
+                {"_id": ObjectId(batch_id), "status": "running"},
+                {"$set": {"status": "completed"}}
+            )
+        except Exception as batch_err:
+            logger.error(f"Failed to update batch status to completed: {batch_err}")
     return results
 
 @celery_app.task(name="app.workers.automation.scraper.daily_database_backup_task")

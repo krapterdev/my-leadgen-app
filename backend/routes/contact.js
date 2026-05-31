@@ -4,6 +4,7 @@ const csv = require('csv-parser');
 const fs = require('fs');
 const path = require('path');
 const Contact = require('../models/Contact');
+const ScraperBatch = require('../models/ScraperBatch');
 const auth = require('../middleware/auth');
 const validator = require('validator');
 
@@ -21,11 +22,25 @@ const upload = multer({
   }
 });
 
+// Get all scraper batches
+router.get('/batches', auth, async (req, res) => {
+  try {
+    const batches = await ScraperBatch.find({ userId: req.user._id }).sort({ createdAt: -1 });
+    res.json({ data: batches });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
 // Get all contacts
 router.get('/', auth, async (req, res) => {
   try {
-    const { page = 1, limit = 50, status, search, businessType, location } = req.query;
+    const { page = 1, limit = 50, status, search, businessType, location, batchId } = req.query;
     const query = { userId: req.user._id };
+
+    if (batchId) {
+      query.batchId = batchId;
+    }
 
     if (status) query.status = status;
     
@@ -278,28 +293,44 @@ const { exec } = require('child_process');
 // Trigger background scraper task
 router.post('/scrape', auth, async (req, res) => {
   try {
-    const { query, maxResults = 20, useProxy = false } = req.body;
+    const { query, location = "", maxResults = 20, useProxy = false } = req.body;
     
     if (!query) {
       return res.status(400).json({ message: 'Search query is required' });
     }
     
-    // Command to run the trigger python script using the venv python
-    const cmd = `../scraper/venv/bin/python trigger_scrape.py --query "${query.replace(/"/g, '\\"')}" --max_results ${maxResults} --use_proxy ${useProxy} --user_id "${req.user._id}"`;
+    // Create new ScraperBatch in MongoDB
+    const batch = new ScraperBatch({
+      userId: req.user._id,
+      query,
+      location,
+      status: 'running',
+      count: 0
+    });
+    await batch.save();
     
-    exec(cmd, { cwd: path.join(__dirname, '..') }, (error, stdout, stderr) => {
-      if (error) {
-        console.error('Failed to trigger scraper task:', error, stderr);
-        return res.status(500).json({ message: `Failed to trigger scraper task: ${stderr || error.message}` });
-      }
-      
-      if (stdout.includes('ERROR:')) {
-        console.error('Scraper task error in Python:', stdout);
-        return res.status(500).json({ message: `Failed to queue scraper task: ${stdout.trim()}` });
+    // Command to run the trigger python script using the venv python
+    const cmd = `../scraper/venv/bin/python trigger_scrape.py --query "${query.replace(/"/g, '\\"')}" --location "${location.replace(/"/g, '\\"')}" --max_results ${maxResults} --use_proxy ${useProxy} --user_id "${req.user._id}" --batch_id "${batch._id}"`;
+    
+    exec(cmd, { cwd: path.join(__dirname, '..') }, async (error, stdout, stderr) => {
+      if (error || stdout.includes('ERROR:')) {
+        const errorMsg = stderr || stdout.trim() || error?.message || 'Unknown Python error';
+        console.error('Failed to trigger scraper task:', errorMsg);
+        
+        // Update batch status to failed
+        try {
+          batch.status = 'failed';
+          batch.errorMessage = errorMsg;
+          await batch.save();
+        } catch (dbErr) {
+          console.error('Failed to save batch error status:', dbErr);
+        }
+        
+        return res.status(500).json({ message: `Failed to trigger scraper task: ${errorMsg}` });
       }
       
       console.log('Scraper task successfully queued:', stdout);
-      res.json({ message: 'Scraping task queued successfully in background' });
+      res.json({ message: 'Scraping task queued successfully in background', batchId: batch._id });
     });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
