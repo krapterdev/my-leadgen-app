@@ -204,6 +204,12 @@ const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 // Process email sequences
 async function processEmailSequences(options = {}) {
   const { campaignId, force = false } = options;
+  
+  if (!force && global.activeSection && global.activeSection !== 'campaigns') {
+    console.log(`[Email Worker] Skipping email execution because active section is "${global.activeSection}" (not "campaigns")`);
+    return;
+  }
+
   console.log(`🔄 Processing email sequences${campaignId ? ` for campaign ${campaignId}` : ''}${force ? ' (FORCE MODE)' : ''}...`);
   
   try {

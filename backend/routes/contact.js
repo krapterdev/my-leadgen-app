@@ -285,9 +285,9 @@ router.post('/scrape', auth, async (req, res) => {
     }
     
     // Command to run the trigger python script using the venv python
-    const cmd = `../scraper/venv/bin/python3 trigger_scrape.py --query "${query.replace(/"/g, '\\"')}" --max_results ${maxResults} --use_proxy ${useProxy}`;
+    const cmd = `../scraper/venv/bin/python trigger_scrape.py --query "${query.replace(/"/g, '\\"')}" --max_results ${maxResults} --use_proxy ${useProxy} --user_id "${req.user._id}"`;
     
-    exec(cmd, { cwd: path.join(__dirname, '..') }, (error, stdout, stderr) => {
+    exec(cmd, { cwd: __dirname }, (error, stdout, stderr) => {
       if (error) {
         console.error('Failed to trigger scraper task:', error, stderr);
         return res.status(500).json({ message: 'Failed to trigger scraper task', error: error.message });

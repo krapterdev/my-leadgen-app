@@ -185,6 +185,11 @@ async function checkMailboxStatus(mailbox) {
 
 // Check all verified mailboxes for replies
 async function checkAllMailboxes() {
+  if (global.activeSection && global.activeSection !== 'replies') {
+    console.log(`[IMAP Worker] Skipping IMAP checking because active section is "${global.activeSection}" (not "replies")`);
+    return;
+  }
+
   try {
     const verifiedMailboxes = await Mailbox.find({ 
       isVerified: true,

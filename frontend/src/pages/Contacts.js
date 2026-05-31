@@ -15,6 +15,50 @@ const Contacts = () => {
   const [page, setPage] = useState(1);
   const [selectedContacts, setSelectedContacts] = useState([]);
   const queryClient = useQueryClient();
+  const [scrapingProgress, setScrapingProgress] = useState(null);
+  const [scrapedLeadsList, setScrapedLeadsList] = useState([]);
+
+  // SSE Scraper progress updates
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (!token) return;
+
+    const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5001/api';
+    const eventSource = new EventSource(`${apiUrl}/realtime/events?token=${encodeURIComponent(token)}`);
+
+    eventSource.addEventListener('scraper-progress', (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        console.log('SSE Scraper Progress:', data);
+        setScrapingProgress(data);
+
+        if (data.company && data.status === 'PROGRESS') {
+          setScrapedLeadsList(prev => {
+            const exists = prev.some(c => c.name === data.company.name || (c.website && c.website === data.company.website));
+            if (!exists) {
+              return [data.company, ...prev];
+            }
+            return prev;
+          });
+          queryClient.invalidateQueries('contacts');
+        }
+
+        if (data.status === 'COMPLETED' || data.status === 'FAILED') {
+          queryClient.invalidateQueries('contacts');
+        }
+      } catch (err) {
+        console.error('Error parsing scraper progress:', err);
+      }
+    });
+
+    eventSource.onerror = (err) => {
+      console.error('SSE Scraper error:', err);
+    };
+
+    return () => {
+      eventSource.close();
+    };
+  }, [queryClient]);
 
   const { data: contactsData, isLoading } = useQuery(
     ['contacts', { page, search, businessType, location }],
@@ -276,6 +320,69 @@ const Contacts = () => {
           </button>
         </div>
       </div>
+
+      {/* Scraper Progress Alert Card */}
+      {scrapingProgress && (
+        <div className="bg-white border-2 border-indigo-100 rounded-xl shadow-md p-6 mb-6 space-y-4 animate-fade-in">
+          <div className="flex justify-between items-center border-b border-gray-100 pb-3">
+            <h3 className="text-lg font-bold text-indigo-950 flex items-center">
+              <Sparkles className="h-5 w-5 mr-2 text-indigo-600 animate-pulse" />
+              Scraper Execution Status: <span className="ml-1.5 px-2 py-0.5 rounded text-xs font-semibold uppercase bg-indigo-100 text-indigo-800">{scrapingProgress.status}</span>
+            </h3>
+            <button 
+              onClick={() => { setScrapingProgress(null); setScrapedLeadsList([]); }} 
+              className="text-gray-400 hover:text-gray-655 text-sm font-semibold transition-colors"
+            >
+              Dismiss
+            </button>
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex justify-between text-sm font-medium text-gray-700">
+              <span className="truncate max-w-[70%]">{scrapingProgress.message || 'Processing background job...'}</span>
+              <span>{scrapingProgress.progress} / {scrapingProgress.total} Leads</span>
+            </div>
+            
+            {/* Progress bar */}
+            <div className="w-full bg-gray-100 rounded-full h-3.5 overflow-hidden">
+              <div 
+                className="bg-indigo-600 h-full rounded-full transition-all duration-500 ease-out"
+                style={{ width: `${Math.min(100, (scrapingProgress.progress / (scrapingProgress.total || 1)) * 100)}%` }}
+              />
+            </div>
+          </div>
+
+          {/* Scraped Live Leads Preview List */}
+          {scrapedLeadsList.length > 0 && (
+            <div className="space-y-3 pt-2">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-gray-400">Real-time Scraped Leads</h4>
+              <div className="max-h-48 overflow-y-auto border border-gray-150 rounded-lg divide-y divide-gray-100 bg-gray-50">
+                {scrapedLeadsList.map((lead, idx) => (
+                  <div key={idx} className="p-3 flex items-start justify-between text-sm animate-slide-in">
+                    <div>
+                      <div className="font-semibold text-gray-900">{lead.name}</div>
+                      <div className="text-xs text-gray-500 flex items-center space-x-2 mt-0.5">
+                        {lead.website && <span className="text-indigo-600">{lead.website}</span>}
+                        {lead.phone && <span className="text-gray-400">| {lead.phone}</span>}
+                      </div>
+                    </div>
+                    {lead.upgradePriority && (
+                      <span className={`inline-flex px-2 py-0.5 text-[10px] font-semibold rounded-full uppercase ${
+                        lead.upgradePriority === 'CRITICAL' ? 'bg-red-100 text-red-800' :
+                        lead.upgradePriority === 'URGENT' ? 'bg-orange-100 text-orange-800' :
+                        lead.upgradePriority === 'HIGH' ? 'bg-amber-100 text-amber-800' :
+                        'bg-gray-100 text-gray-800'
+                      }`}>
+                        {lead.upgradePriority} Priority
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Filters and Search Grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

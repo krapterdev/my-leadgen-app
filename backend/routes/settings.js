@@ -90,4 +90,16 @@ router.put('/preferences', auth, async (req, res) => {
   }
 });
 
+// Update active section tracking
+router.post('/active-section', auth, async (req, res) => {
+  try {
+    const { section } = req.body;
+    global.activeSection = section;
+    console.log(`[Section Tracking] Active section updated to: ${section}`);
+    res.json({ success: true, activeSection: global.activeSection });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 module.exports = router;

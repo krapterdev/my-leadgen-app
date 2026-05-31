@@ -40,9 +40,40 @@ logger = get_task_logger(__name__)
 # Initialize database connections
 MONGODB_URI = os.getenv("MONGODB_URI", "mongodb://localhost:27017/email-outreach")
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
-
-# Connect to Redis
 redis_client = redis.Redis.from_url(REDIS_URL)
+
+def send_progress_update(user_id, status, company=None, progress=0, total=0, message=""):
+    if not user_id:
+        return
+    try:
+        payload = {
+            "userId": user_id,
+            "status": status,
+            "progress": progress,
+            "total": total,
+            "message": message
+        }
+        if company:
+            payload["company"] = {
+                "name": company.get("name", ""),
+                "website": company.get("website", ""),
+                "phone": company.get("phone", ""),
+                "address": company.get("address", ""),
+                "rating": company.get("rating", ""),
+                "reviews": company.get("reviews", ""),
+                "upgradePriority": company.get("upgrade_priority", "LOW")
+            }
+        
+        data = json.dumps(payload).encode('utf-8')
+        req = urllib.request.Request(
+            "http://localhost:5001/api/webhook/scraper-progress",
+            data=data,
+            headers={'Content-Type': 'application/json'}
+        )
+        with urllib.request.urlopen(req, timeout=5) as response:
+            response.read()
+    except Exception as e:
+        logger.error(f"Failed to send progress update: {e}")
 
 BLOOM_FILTER_NAME = "gmb_scraped_websites_bloom"
 REDIS_SET_NAME = "gmb_scraped_websites_set"
@@ -581,7 +612,9 @@ def human_click(element):
 
 # ----------------- DB PERSISTENCE -----------------
 
-def save_lead_to_mongo(company_data):
+# ----------------- DB PERSISTENCE -----------------
+
+def save_lead_to_mongo(company_data, user_id=None):
     """Save lead matching MongoDB schema in Contact.js."""
     try:
         client = MongoClient(MONGODB_URI)
@@ -590,13 +623,21 @@ def save_lead_to_mongo(company_data):
         users_col = db["users"]
         contacts_col = db["contacts"]
         
-        user = users_col.find_one()
-        if not user:
-            logger.error("No active user found in MongoDB. Cannot assign lead.")
-            return False
-            
-        user_id = user["_id"]
+        target_user_id = None
+        if user_id:
+            try:
+                from bson.objectid import ObjectId
+                target_user_id = ObjectId(user_id)
+            except Exception as e:
+                logger.error(f"Invalid user_id format passed: {user_id}")
         
+        if not target_user_id:
+            user = users_col.find_one()
+            if not user:
+                logger.error("No active user found in MongoDB. Cannot assign lead.")
+                return False
+            target_user_id = user["_id"]
+            
         # Resolve email: first found real email, fallback to scraped, fallback to domain fallback
         email_addr = (
             (company_data.get("real_emails") and company_data.get("real_emails")[0]) or
@@ -605,7 +646,7 @@ def save_lead_to_mongo(company_data):
         )
         
         contact_doc = {
-            "userId": user_id,
+            "userId": target_user_id,
             "email": email_addr.lower(),
             "firstName": company_data.get("name", "Unknown"),
             "lastName": "Company",
@@ -644,7 +685,7 @@ def save_lead_to_mongo(company_data):
             }
         }
         
-        existing = contacts_col.find_one({"userId": user_id, "email": contact_doc["email"]})
+        existing = contacts_col.find_one({"userId": target_user_id, "email": contact_doc["email"]})
         if existing:
             logger.info(f"Lead with email {contact_doc['email']} already exists. Skipping insertion.")
             return False
@@ -712,13 +753,14 @@ def launch_stealth_browser(playwright_instance, proxy_dict=None):
 # ----------------- CELERY SCRAPING TASK -----------------
 
 @celery_app.task(name="app.workers.automation.scraper.scrape_gmb_task", bind=True)
-def scrape_gmb_task(self, query: str, max_results: int = 20, use_proxy: bool = False):
+def scrape_gmb_task(self, query: str, max_results: int = 20, use_proxy: bool = False, user_id: str = None):
     """
     Celery task to scrape Google Maps (GMB) for the given search query.
     Uses proxy rotation (if enabled), anti-fingerprinting stealth,
     and Bloom filters for URL duplicate check.
     """
-    logger.info(f"Scrape GMB Task triggered: Query='{query}', Max={max_results}, Proxy={use_proxy}")
+    logger.info(f"Scrape GMB Task triggered: Query='{query}', Max={max_results}, Proxy={use_proxy}, UserID={user_id}")
+    send_progress_update(user_id, "STARTED", progress=0, total=max_results, message="Scraping task initialized...")
     
     results = []
     
@@ -735,10 +777,12 @@ def scrape_gmb_task(self, query: str, max_results: int = 20, use_proxy: bool = F
             browser, context, page = launch_stealth_browser(p, proxy_config)
         except Exception as browser_err:
             logger.error(f"Failed to launch browser: {browser_err}")
+            send_progress_update(user_id, "FAILED", progress=0, total=max_results, message=f"Failed to launch browser: {browser_err}")
             return []
             
         search_url = f"https://www.google.com/maps/search/{urllib.parse.quote_plus(query)}"
         logger.info(f"Searching maps: {search_url}")
+        send_progress_update(user_id, "SEARCHING", progress=0, total=max_results, message=f"Searching Google Maps for '{query}'...")
         
         try:
             loaded = False
@@ -753,6 +797,7 @@ def scrape_gmb_task(self, query: str, max_results: int = 20, use_proxy: bool = F
                     
                     if "google.com/sorry" in current_url or "consent.google.com" in current_url or "detected unusual traffic" in page_content or "captcha" in page_content.lower():
                         logger.warning(f"Google Captcha/unusual traffic block detected on attempt {attempt}! Rotating proxy and entering cooldown...")
+                        send_progress_update(user_id, "SEARCHING", progress=len(results), total=max_results, message=f"Unusual traffic block detected on attempt {attempt}. Rotating proxy and entering cooldown...")
                         time.sleep(random.uniform(15.0, 30.0))
                         
                         try:
@@ -769,6 +814,7 @@ def scrape_gmb_task(self, query: str, max_results: int = 20, use_proxy: bool = F
                         break
                 except Exception as goto_err:
                     logger.warning(f"Failed to navigate search page on attempt {attempt}: {goto_err}. Rotating proxy...")
+                    send_progress_update(user_id, "SEARCHING", progress=len(results), total=max_results, message=f"Connection retry (attempt {attempt}/3) due to navigation error...")
                     try:
                         browser.close()
                     except Exception:
@@ -781,6 +827,7 @@ def scrape_gmb_task(self, query: str, max_results: int = 20, use_proxy: bool = F
             
             if not loaded:
                 logger.error("Could not load Google Maps search results after 3 attempts due to captcha/network errors. Exiting.")
+                send_progress_update(user_id, "FAILED", progress=len(results), total=max_results, message="Failed to load search results after 3 attempts (CAPTCHA or connection blocked).")
                 return []
                 
             scraped_names = set()
@@ -789,8 +836,10 @@ def scrape_gmb_task(self, query: str, max_results: int = 20, use_proxy: bool = F
             # Wait for search results feed to load
             try:
                 page.wait_for_selector("a[href*='/maps/place/']", timeout=30000)
+                send_progress_update(user_id, "SEARCHING", progress=0, total=max_results, message="Google Maps search feed loaded. Extracting leads...")
             except Exception:
                 logger.warning("No initial maps search results loaded.")
+                send_progress_update(user_id, "FAILED", progress=0, total=max_results, message="No initial search results loaded from Google Maps.")
                 return []
                 
             scroll_attempts = 0
@@ -800,6 +849,7 @@ def scrape_gmb_task(self, query: str, max_results: int = 20, use_proxy: bool = F
                 # Find all current place cards in the scroll feed
                 place_links = page.query_selector_all("a[href*='/maps/place/']")
                 logger.info(f"Loaded {len(place_links)} elements. Results: {len(results)}/{max_results}")
+                send_progress_update(user_id, "SEARCHING", progress=len(results), total=max_results, message=f"Scrolling results: processing {len(place_links)} listing(s)...")
                 
                 new_items_processed = False
                 
@@ -822,6 +872,8 @@ def scrape_gmb_task(self, query: str, max_results: int = 20, use_proxy: bool = F
                         name_element = page.query_selector("h1")
                         company_name = name_element.inner_text() if name_element else aria_label
                         
+                        send_progress_update(user_id, "SEARCHING", progress=len(results), total=max_results, message=f"Analyzing details for: {company_name}...")
+                        
                         # Website extraction
                         website = ""
                         website_elem = page.query_selector("a[data-item-id='authority']")
@@ -832,6 +884,7 @@ def scrape_gmb_task(self, query: str, max_results: int = 20, use_proxy: bool = F
                         if website:
                             if is_duplicate(website):
                                 logger.info(f"Website duplicate skipped: {website}")
+                                send_progress_update(user_id, "DUPLICATE_SKIP", progress=len(results), total=max_results, message=f"Skipped duplicate website: {website}")
                                 continue
                                 
                         # Phone extraction
@@ -889,6 +942,7 @@ def scrape_gmb_task(self, query: str, max_results: int = 20, use_proxy: bool = F
                             # Crawl the website to enrich details
                             try:
                                 logger.info(f"Enriching website details for: {website}")
+                                send_progress_update(user_id, "SEARCHING", progress=len(results), total=max_results, message=f"Crawling website for emails and tech stack: {website_domain}...")
                                 enrichment = enrich_lead_website(website, company_name, rating, address)
                                 real_emails = enrichment.get("real_emails", [])
                                 linkedin = enrichment.get("linkedin", "")
@@ -999,8 +1053,9 @@ def scrape_gmb_task(self, query: str, max_results: int = 20, use_proxy: bool = F
                         logger.info(f"Scraped details: {company_name} | URL: {website} | Phone: {phone}")
                         
                         if website or phone:
-                            save_lead_to_mongo(company_data)
+                            save_lead_to_mongo(company_data, user_id=user_id)
                             results.append(company_data)
+                            send_progress_update(user_id, "PROGRESS", company=company_data, progress=len(results), total=max_results, message=f"Saved lead: {company_name}")
                             
                     except Exception as details_err:
                         logger.warning(f"Error parsing details for {aria_label}: {details_err}")
@@ -1018,6 +1073,7 @@ def scrape_gmb_task(self, query: str, max_results: int = 20, use_proxy: bool = F
                     
         except Exception as main_err:
             logger.error(f"Error during search navigation/parsing: {main_err}")
+            send_progress_update(user_id, "FAILED", progress=len(results), total=max_results, message=f"Scraper error: {str(main_err)}")
         finally:
             try:
                 browser.close()
@@ -1025,6 +1081,7 @@ def scrape_gmb_task(self, query: str, max_results: int = 20, use_proxy: bool = F
                 pass
                 
     logger.info(f"Finished GMB scrape task. Added {len(results)} new leads.")
+    send_progress_update(user_id, "COMPLETED", progress=len(results), total=max_results, message=f"Scraping completed. Added {len(results)} new leads.")
     return results
 
 @celery_app.task(name="app.workers.automation.scraper.daily_database_backup_task")

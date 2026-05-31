@@ -34,4 +34,25 @@ router.post('/email-event', async (req, res) => {
   }
 });
 
+// Scraper progress webhook
+router.post('/scraper-progress', async (req, res) => {
+  try {
+    const { userId, status, progress, total, message, company } = req.body;
+    console.log(`[Scraper Webhook] Progress: ${progress}/${total} | Status: ${status} | Msg: ${message}`);
+    const { sendToUser } = require('../utils/realtime');
+    sendToUser(userId, 'scraper-progress', {
+      status,
+      progress,
+      total,
+      message,
+      company,
+      timestamp: new Date().toISOString()
+    });
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Scraper webhook error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 module.exports = router;

@@ -100,7 +100,49 @@ app.use((err, req, res, next) => {
 try {
   startImapWorker();
   startEmailWorker();
-  console.log('✅ All workers started successfully');
+  console.log('✅ All Node workers started successfully');
+
+  // Spawn Python Celery Worker automatically
+  const { spawn } = require('child_process');
+  const path = require('path');
+  console.log('🔄 Spawning Python Celery background worker...');
+
+  const celeryCmd = path.join(__dirname, '../scraper/venv/bin/celery');
+  const celeryWorker = spawn(
+    celeryCmd,
+    ['-A', 'app.workers.celery_app', 'worker', '--loglevel=info'],
+    {
+      cwd: __dirname,
+      env: { ...process.env, PYTHONPATH: __dirname }
+    }
+  );
+
+  celeryWorker.stdout.on('data', (data) => {
+    console.log(`[Celery]: ${data.toString().trim()}`);
+  });
+
+  celeryWorker.stderr.on('data', (data) => {
+    console.error(`[Celery Err]: ${data.toString().trim()}`);
+  });
+
+  celeryWorker.on('error', (err) => {
+    console.error('❌ Failed to start Celery process:', err);
+  });
+
+  celeryWorker.on('close', (code) => {
+    console.log(`[Celery] worker process exited with code ${code}`);
+  });
+
+  // Clean shutdown
+  process.on('SIGINT', () => {
+    celeryWorker.kill();
+    process.exit();
+  });
+  process.on('SIGTERM', () => {
+    celeryWorker.kill();
+    process.exit();
+  });
+
 } catch (error) {
   console.error('Worker startup error:', error);
 }
