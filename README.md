@@ -74,7 +74,6 @@ my-leadgen-app/
 │   ├── test_scraper.py       # Standalone Scraper Tester
 │   └── requirements.txt      # Python Scraper dependencies
 ├── frontend/                 # React UI Dashboard (Tailwind CSS)
-├── scraper/                  # Python Venv Directory
 └── README.md                 # System Architecture & Documentation
 ```
 
@@ -87,11 +86,15 @@ my-leadgen-app/
 - Python (3.10+)
 - Docker & Docker Compose
 
-### 1. Spin up MongoDB and Redis Containers
-Make sure your Docker daemon is running, and start the services:
+### 1. Spin up MongoDB, Redis, and Mongo Express Containers
+Make sure your Docker Desktop/Daemon is running, and start the containers in your WSL terminal:
 ```bash
-docker start my-mongodb my-redis
+docker start my-mongodb my-redis my-mongo-express
 ```
+* **Database Management Portal (Mongo Express)**: Open [http://localhost:8081](http://localhost:8081) in your browser.
+  * **Username**: `admin`
+  * **Password**: `pass`
+  * *Note: A direct shortcut link to this dashboard has been integrated inside the sidebar navigation of your frontend application.*
 
 ### 2. Configure Node.js Backend & Run
 ```bash
@@ -99,19 +102,22 @@ cd backend
 npm install
 npm run dev
 ```
+* **Note**: Nodemon server ko run karte hi **Celery background worker process automatically spawn (start) ho jayega**. Aapko alag terminal me Celery command run karne ki zaroori nahi hai! Sab kuch backend startup par backend itself execute aur manage karega.
 
-### 3. Run the Scraper Test Script (Standalone verification)
+### 3. Frontend Dashboard Chalaein
+Ek naya terminal khol kar `frontend` folder me jayein aur interface start karein:
+```bash
+cd frontend
+npm install
+npm start
+```
+* **Kyun?**: Isse aapka portal [http://localhost:3000](http://localhost:3000) par run hoga jahan aap campaigns check kar sakte hain.
+
+### 4. Run the Scraper Test Script (Optional standalone check)
 To verify that Playwright is fetching and storing leads into MongoDB:
 ```bash
 cd backend
 PYTHONPATH=. ../scraper/venv/bin/python test_scraper.py
-```
-
-### 4. Run the Celery Worker
-To start processing tasks asynchronously:
-```bash
-cd backend
-PYTHONPATH=. ../scraper/venv/bin/celery -A app.workers.celery_app worker --loglevel=info
 ```
 
 ---
@@ -146,56 +152,30 @@ Yeh project ek **Automated Lead Generation and Outreach Platform** hai. Iske do 
 ### 🚀 Step-by-Step Project Run Kaise Karein? (Execution Steps)
 
 #### **Step 1: Docker Containers Start Karein**
-Sabse pehle check karein ki Docker Desktop chal raha hai, fir WSL terminal khol kar MongoDB aur Redis start karein:
+Sabse pehle check karein ki Docker Desktop chal raha hai, fir WSL terminal khol kar MongoDB, Redis aur Mongo Express start karein:
 ```bash
-docker start my-mongodb my-redis
+docker start my-mongodb my-redis my-mongo-express
 ```
-* **Kyun?**: MongoDB aapki lead directory aur configuration store karega. Redis queues aur anti-duplicate caches manage karega.
-
----
 
 #### **Step 2: Node.js Backend Server Chalaein**
 Terminal me `backend` folder me jayein aur application server start karein:
 ```bash
 cd backend
-npm install
 npm run dev
 ```
-* **Kyun?**: Isse Express API start ho jayegi port `5001` par jo client requests handle karegi, aur background me Email/IMAP sending workers start honge.
-* **Troubleshooting Note**: Agar `nodemon: Permission denied` ki error aaye, to terminal me `chmod -R +x node_modules/.bin` command run karein.
-
----
+* **Kyun?**: Isse Express API start ho jayegi port `5001` par jo client requests handle karegi, aur background me Nodemailer/IMAP workers start honge. Aur **Celery worker auto-spawn command background process me automatically start ho jayegi**.
 
 #### **Step 3: Frontend Dashboard Chalaein**
 Ek naya terminal khol kar `frontend` folder me jayein aur interface start karein:
 ```bash
 cd frontend
-npm install
 npm start
 ```
-* **Kyun?**: Isse aapka outreach portal `http://localhost:3000` par run hoga jahan aap live analytics, leads list aur mailbox settings dekh sakte hain.
-* **Troubleshooting Note**: React scripts run karne ke liye ensure karein ki aap interactive WSL shell (`bash -i`) use kar rahe hain taaki native Linux Node version run ho.
+* **Kyun?**: Isse aapka outreach portal [http://localhost:3000](http://localhost:3000) par run hoga.
 
-
----
-
-#### **Step 4: Scraper Test Run (Direct Testing)**
-Agar aapko testing karni hai ki scraper data nikal kar DB me daal raha hai ya nahi, to python script directly execute karein:
-```bash
-cd backend
-PYTHONPATH=. ../scraper/venv/bin/python test_scraper.py
-```
-* **Kyun?**: Yeh script Google Maps search page open karke data scrape karegi, use Redis me duplicate check karegi, aur nayi companies ko MongoDB `contacts` table me insert karegi.
-
----
-
-#### **Step 5: Distributed Background Workers Setup (Celery & Redis)**
-Agar aap distributed scraping tasks background me queue ke through trigger karna chahte hain:
-```bash
-cd backend
-PYTHONPATH=. ../scraper/venv/bin/celery -A app.workers.celery_app worker --loglevel=info
-```
-* **Kyun?**: Yeh celery worker background me running rahega. Jab bhi aap dashboard ya console se scraping trigger karenge, tasks automatically Redis pipeline ke through execute honge.
+#### **Step 4: Scraper Live Status & Database UI Management**
+- **Live Scraping Status**: Jab aap `Contacts` menu me jakar **Launch Scraper** trigger karenge, to modal window ke under ek beautiful progress bar, logs message aur live scraped leads list preview real-time popup ho jayegi!
+- **Database Manage (PhpMyAdmin style)**: [http://localhost:8081](http://localhost:8081) open karein. **Username: admin** aur **Password: pass** enter karke MongoDB collections (contacts, campaigns, users) ko direct manage aur view karein.
 
 ---
 
@@ -226,7 +206,7 @@ Agar aap is project par naye hain, to yaha step-by-step bataya gaya hai ki dashb
 8. **Analytics (Detailed reports)**:
    - **Kaam**: Campaign-wise filter lagakar sent metrics ki report dekhna.
 9. **DNS Settings (Authentication)**:
-   - **Kaam**: Professional email deliverability ke liye. Jab aap koi domain attach karte hain, to ye SPF, DKIM, aur DMARC records generate karta hai jise aapko apne domain manager (e.g. GoDaddy) me CNAME/TXT records me add karna hota hai. isse emails spam folder me nahi jaate.
+   - **Kaam**: Professional email deliverability ke liye. Jab aap koi domain attach karte hain, to ye SPF, DKIM, aur DMARC records generate karta hai jise aapko apne domain manager (e.g. GoDaddy) me CNAME/TXT records me add kama hota hai. isse emails spam folder me nahi jaate.
 10. **Settings (User Profile)**:
     - **Kaam**: User password changes aur profile info updates ke liye.
 
@@ -240,3 +220,4 @@ Agar aap is project par naye hain, to yaha step-by-step bataya gaya hai ki dashb
 4. **Step 4: Create Template**: `Templates` menu me outreach template (with variables like `{{firstName}}`) banayein.
 5. **Step 5: Launch Campaign**: `Campaigns` menu me jayein, "Create Campaign" click karein, sequence schedule karein aur use active karein.
 6. **Step 6: Track & Manage Replies**: Background cron worker har 5 min me campaign chalaega, log verification `Email History` me dekhein, aur responses `Replies` menu me control karein.
+7. **Step 7: Database Management**: Dashboard ke **Database (Mongo)** side link par click karein. Username: `admin` aur Password: `pass` enter karke local data collections manage karein.

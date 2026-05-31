@@ -113,7 +113,7 @@ try {
     ['-A', 'app.workers.celery_app', 'worker', '--loglevel=info'],
     {
       cwd: __dirname,
-      env: { ...process.env, PYTHONPATH: __dirname }
+      env: { ...process.env, PYTHONPATH: __dirname, PYTHONUNBUFFERED: '1' }
     }
   );
 
