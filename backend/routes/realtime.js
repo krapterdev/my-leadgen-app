@@ -37,6 +37,18 @@ router.get('/events', async (req, res) => {
   res.write(`event: connected\n`);
   res.write(`data: ${JSON.stringify({ message: 'Connected to real-time updates' })}\n\n`);
 
+  // Send buffered logs history
+  try {
+    const { getLogBuffer } = require('../utils/realtime');
+    const history = getLogBuffer();
+    history.forEach(log => {
+      res.write(`event: celery-log\n`);
+      res.write(`data: ${JSON.stringify(log)}\n\n`);
+    });
+  } catch (logHistErr) {
+    console.error('Error sending buffered logs to new connection:', logHistErr);
+  }
+
   // Add client to real-time updates
   addClient(req.user._id.toString(), res);
 

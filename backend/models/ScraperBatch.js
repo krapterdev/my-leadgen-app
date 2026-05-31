@@ -16,13 +16,22 @@ const scraperBatchSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['running', 'completed', 'failed'],
+    enum: ['running', 'paused', 'completed', 'failed', 'killed'],
     default: 'running'
   },
   count: {
     type: Number,
     default: 0
   },
+  maxResults: {
+    type: Number,
+    default: 20
+  },
+  useProxy: {
+    type: Boolean,
+    default: false
+  },
+  taskId: String,
   errorMessage: String
 }, {
   timestamps: true

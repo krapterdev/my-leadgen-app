@@ -118,11 +118,23 @@ try {
   );
 
   celeryWorker.stdout.on('data', (data) => {
-    console.log(`[Celery]: ${data.toString().trim()}`);
+    const text = data.toString().trim();
+    console.log(`[Celery]: ${text}`);
+    try {
+      const { broadcastToAll, bufferLog } = require('./utils/realtime');
+      bufferLog(text, 'stdout');
+      broadcastToAll('celery-log', { text, type: 'stdout', timestamp: new Date().toLocaleTimeString() });
+    } catch (e) {}
   });
 
   celeryWorker.stderr.on('data', (data) => {
-    console.error(`[Celery Err]: ${data.toString().trim()}`);
+    const text = data.toString().trim();
+    console.error(`[Celery Err]: ${text}`);
+    try {
+      const { broadcastToAll, bufferLog } = require('./utils/realtime');
+      bufferLog(text, 'stderr');
+      broadcastToAll('celery-log', { text, type: 'stderr', timestamp: new Date().toLocaleTimeString() });
+    } catch (e) {}
   });
 
   celeryWorker.on('error', (err) => {

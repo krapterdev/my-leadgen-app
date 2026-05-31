@@ -42,10 +42,19 @@ MONGODB_URI = os.getenv("MONGODB_URI", "mongodb://localhost:27017/email-outreach
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
 redis_client = redis.Redis.from_url(REDIS_URL)
 
-def send_progress_update(user_id, status, company=None, progress=0, total=0, message=""):
+def send_progress_update(user_id, status, company=None, progress=0, total=0, message="", batch_id=None):
     if not user_id:
         return
     try:
+        # Resolve batch_id from redis if not explicitly passed
+        if not batch_id:
+            try:
+                active_bytes = redis_client.get(f"user:{user_id}:active_batch")
+                if active_bytes:
+                    batch_id = active_bytes.decode('utf-8')
+            except Exception:
+                pass
+
         payload = {
             "userId": user_id,
             "status": status,
@@ -53,6 +62,8 @@ def send_progress_update(user_id, status, company=None, progress=0, total=0, mes
             "total": total,
             "message": message
         }
+        if batch_id:
+            payload["batchId"] = batch_id
         if company:
             payload["company"] = {
                 "name": company.get("name", ""),
@@ -492,6 +503,37 @@ def fetch_free_proxies():
         logger.error(f"Error fetching free proxies: {e}")
     return proxies
 
+def fetch_krapter_proxies():
+    """Fetch active proxies from KrapterProxyTool backend API."""
+    proxies = []
+    base_url = os.getenv("KRAPTER_PROXY_URL", "http://localhost:2223")
+    api_key = os.getenv("KRAPTER_PROXY_KEY")
+    
+    headers = {}
+    if api_key:
+        headers["X-API-Key"] = api_key
+        
+    try:
+        # Try fetching from /api/proxies/external which returns flat list of IP:PORT
+        url = f"{base_url.rstrip('/')}/api/proxies/external"
+        logger.info(f"Trying to fetch proxies from KrapterProxyTool API: {url}...")
+        req = urllib.request.Request(url, headers=headers)
+        with urllib.request.urlopen(req, timeout=5) as response:
+            content = response.read().decode('utf-8').strip()
+            if content:
+                for line in content.splitlines():
+                    line = line.strip()
+                    if line:
+                        proxies.append({
+                            "server": f"http://{line}",
+                            "https": False
+                        })
+                logger.info(f"Successfully loaded {len(proxies)} proxies from KrapterProxyTool API.")
+    except Exception as e:
+        logger.warning(f"Could not fetch from KrapterProxyTool API (ensure it is running and key is correct): {e}")
+        
+    return proxies
+
 def test_proxy(proxy_url: str, timeout: int = 3) -> bool:
     """Verify proxy connectivity using a quick HTTP check."""
     try:
@@ -515,20 +557,27 @@ class ProxyRotator:
         current_time = time.time()
         if not self.proxies or (current_time - self.last_fetch_time > self.fetch_cooldown):
             logger.info("Refreshing proxy list...")
-            raw_proxies = fetch_free_proxies()
-            working_proxies = []
             
-            random.shuffle(raw_proxies)
-            # Test raw proxies until we get a pool of up to 3 working ones
-            for p in raw_proxies[:20]:
-                server = p["server"]
-                logger.debug(f"Testing proxy: {server}")
-                if test_proxy(server):
-                    logger.info(f"Proxy is ACTIVE: {server}")
-                    working_proxies.append(p)
-                    if len(working_proxies) >= 3:
-                        break
+            # First try KrapterProxyTool API
+            working_proxies = fetch_krapter_proxies()
             
+            # If nothing returned, fallback to free-proxy-list scraper
+            if not working_proxies:
+                logger.info("KrapterProxyTool returned no proxies. Falling back to free-proxy-list scraper...")
+                raw_proxies = fetch_free_proxies()
+                working_proxies = []
+                
+                random.shuffle(raw_proxies)
+                # Test raw proxies until we get a pool of up to 3 working ones
+                for p in raw_proxies[:20]:
+                    server = p["server"]
+                    logger.debug(f"Testing proxy: {server}")
+                    if test_proxy(server):
+                        logger.info(f"Proxy is ACTIVE: {server}")
+                        working_proxies.append(p)
+                        if len(working_proxies) >= 3:
+                            break
+                            
             self.proxies = working_proxies
             self.last_fetch_time = current_time
             self.current_idx = 0
@@ -777,9 +826,24 @@ def scrape_gmb_task(self, query: str, max_results: int = 20, use_proxy: bool = F
     and Bloom filters for URL duplicate check.
     """
     logger.info(f"Scrape GMB Task triggered: Query='{query}', Location='{location}', Max={max_results}, Proxy={use_proxy}, UserID={user_id}, BatchID={batch_id}")
-    send_progress_update(user_id, "STARTED", progress=0, total=max_results, message="Scraping task initialized...")
+    if batch_id and user_id:
+        try:
+            redis_client.set(f"user:{user_id}:active_batch", batch_id)
+        except Exception as r_err:
+            logger.warning(f"Failed to set active batch in redis: {r_err}")
+            
+    send_progress_update(user_id, "STARTED", progress=0, total=max_results, message="Scraping task initialized...", batch_id=batch_id)
     
     results = []
+    
+    contacts_col = None
+    mongo_client = None
+    try:
+        mongo_client = MongoClient(MONGODB_URI)
+        mongo_db = mongo_client.get_default_database()
+        contacts_col = mongo_db["contacts"]
+    except Exception as db_init_err:
+        logger.warning(f"Failed to initialize MongoClient in task: {db_init_err}")
     
     # Determine if we should use a proxy
     proxy_config = None
@@ -860,10 +924,39 @@ def scrape_gmb_task(self, query: str, max_results: int = 20, use_proxy: bool = F
                 send_progress_update(user_id, "FAILED", progress=0, total=max_results, message="No initial search results loaded from Google Maps.")
                 return []
                 
+            # Initialize Redis status key for tracking
+            if batch_id:
+                try:
+                    redis_client.set(f"scraper:{batch_id}:status", "running")
+                except Exception as r_err:
+                    logger.warning(f"Failed to set status in redis: {r_err}")
+
             scroll_attempts = 0
             max_scroll_attempts = 30
             
             while len(results) < max_results and scroll_attempts < max_scroll_attempts:
+                # Check Redis for task status (Pause, Resume, Kill/Stop)
+                if batch_id:
+                    try:
+                        status_bytes = redis_client.get(f"scraper:{batch_id}:status")
+                        if status_bytes:
+                            task_status = status_bytes.decode('utf-8')
+                            if task_status == "paused":
+                                send_progress_update(user_id, "PAUSED", progress=len(results), total=max_results, message="Scraping paused by user.")
+                                logger.info(f"Scraper batch {batch_id} is paused. Waiting...")
+                                while redis_client.get(f"scraper:{batch_id}:status") == b"paused":
+                                    time.sleep(1.0)
+                                logger.info(f"Scraper batch {batch_id} resumed.")
+                                send_progress_update(user_id, "SEARCHING", progress=len(results), total=max_results, message="Scraper resumed.")
+                            
+                            status_bytes_after = redis_client.get(f"scraper:{batch_id}:status")
+                            if status_bytes_after and status_bytes_after.decode('utf-8') in ["killed", "stopped"]:
+                                logger.info(f"Scraper batch {batch_id} killed. Terminating task.")
+                                send_progress_update(user_id, "FAILED", progress=len(results), total=max_results, message="Scraper job terminated by user.")
+                                return results
+                    except Exception as redis_check_err:
+                        logger.warning(f"Error checking redis state: {redis_check_err}")
+
                 # Find all current place cards in the scroll feed
                 place_links = page.query_selector_all("a[href*='/maps/place/']")
                 logger.info(f"Loaded {len(place_links)} elements. Results: {len(results)}/{max_results}")
@@ -875,10 +968,39 @@ def scrape_gmb_task(self, query: str, max_results: int = 20, use_proxy: bool = F
                     if len(results) >= max_results:
                         break
                         
+                    # Internal loop quick check
+                    if batch_id:
+                        try:
+                            status_bytes = redis_client.get(f"scraper:{batch_id}:status")
+                            if status_bytes and status_bytes.decode('utf-8') in ["killed", "stopped"]:
+                                logger.info(f"Scraper batch {batch_id} killed in loop. Terminating task.")
+                                send_progress_update(user_id, "FAILED", progress=len(results), total=max_results, message="Scraper job terminated by user.")
+                                return results
+                        except Exception:
+                            pass
+                        
                     aria_label = link.get_attribute("aria-label")
                     if not aria_label or aria_label in scraped_names:
                         continue
                         
+                    # Skip clicking/processing if company is already in MongoDB (prevent duplicate processing)
+                    if contacts_col is not None and user_id:
+                        try:
+                            clean_company_name = aria_label.strip()
+                            from bson.objectid import ObjectId
+                            target_user_obj_id = ObjectId(user_id)
+                            
+                            existing_lead = contacts_col.find_one({
+                                "userId": target_user_obj_id,
+                                "company": { "$regex": f"^{re.escape(clean_company_name)}$", "$options": "i" }
+                            })
+                            if existing_lead:
+                                logger.info(f"Skipping already scraped lead to avoid duplicate work: {clean_company_name}")
+                                scraped_names.add(aria_label)
+                                continue
+                        except Exception as db_check_err:
+                            logger.warning(f"Error checking duplicate lead in task loop: {db_check_err}")
+
                     scraped_names.add(aria_label)
                     new_items_processed = True
                     
@@ -1098,7 +1220,7 @@ def scrape_gmb_task(self, query: str, max_results: int = 20, use_proxy: bool = F
             if batch_id:
                 try:
                     from bson.objectid import ObjectId
-                    db["scraperbatches"].update_one(
+                    mongo_db["scraperbatches"].update_one(
                         {"_id": ObjectId(batch_id)},
                         {"$set": {"status": "failed", "errorMessage": str(main_err)}}
                     )
@@ -1109,19 +1231,31 @@ def scrape_gmb_task(self, query: str, max_results: int = 20, use_proxy: bool = F
                 browser.close()
             except Exception:
                 pass
+            try:
+                if mongo_client:
+                    mongo_client.close()
+            except Exception:
+                pass
                 
     logger.info(f"Finished GMB scrape task. Added {len(results)} new leads.")
-    send_progress_update(user_id, "COMPLETED", progress=len(results), total=max_results, message=f"Scraping completed. Added {len(results)} new leads.")
+    send_progress_update(user_id, "COMPLETED", progress=len(results), total=max_results, message=f"Scraping completed. Added {len(results)} new leads.", batch_id=batch_id)
     if batch_id:
         try:
             from bson.objectid import ObjectId
             # Only update status to completed if it's currently 'running'
-            db["scraperbatches"].update_one(
+            mongo_db["scraperbatches"].update_one(
                 {"_id": ObjectId(batch_id), "status": "running"},
                 {"$set": {"status": "completed"}}
             )
         except Exception as batch_err:
             logger.error(f"Failed to update batch status to completed: {batch_err}")
+            
+    if user_id:
+        try:
+            redis_client.delete(f"user:{user_id}:active_batch")
+        except Exception:
+            pass
+            
     return results
 
 @celery_app.task(name="app.workers.automation.scraper.daily_database_backup_task")

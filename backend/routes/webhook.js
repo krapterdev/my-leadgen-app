@@ -37,8 +37,8 @@ router.post('/email-event', async (req, res) => {
 // Scraper progress webhook
 router.post('/scraper-progress', async (req, res) => {
   try {
-    const { userId, status, progress, total, message, company } = req.body;
-    console.log(`[Scraper Webhook] Progress: ${progress}/${total} | Status: ${status} | Msg: ${message}`);
+    const { userId, status, progress, total, message, company, batchId } = req.body;
+    console.log(`[Scraper Webhook] Progress: ${progress}/${total} | Status: ${status} | Msg: ${message} | BatchId: ${batchId}`);
     const { sendToUser } = require('../utils/realtime');
     sendToUser(userId, 'scraper-progress', {
       status,
@@ -46,6 +46,7 @@ router.post('/scraper-progress', async (req, res) => {
       total,
       message,
       company,
+      batchId,
       timestamp: new Date().toISOString()
     });
     res.json({ success: true });

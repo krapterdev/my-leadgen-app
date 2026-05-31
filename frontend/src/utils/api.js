@@ -59,6 +59,10 @@ export const contactAPI = {
   cleanTrash: () => api.post('/contact/clean-trash'),
   scrape: (data) => api.post('/contact/scrape', data),
   getBatches: () => api.get('/contact/batches'),
+  pauseScrape: (batchId) => api.post('/contact/scrape/pause', { batchId }),
+  resumeScrape: (batchId) => api.post('/contact/scrape/resume', { batchId }),
+  killScrape: (batchId) => api.post('/contact/scrape/kill', { batchId }),
+  restartScrape: (batchId) => api.post('/contact/scrape/restart', { batchId }),
 };
 
 export const campaignAPI = {

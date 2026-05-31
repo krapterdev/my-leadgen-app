@@ -446,6 +446,7 @@ const CreateCampaignForm = ({ onCancel, onSuccess }) => {
   const contacts = contactsData?.data?.contacts || [];
   const verifiedMailboxes = Array.isArray(mailboxes?.data?.data) ? mailboxes.data.data.filter(m => m.isVerified) : [];
   const templates = templatesData?.data || [];
+  const batches = batchesResponse?.data?.data || [];
 
   return (
     <div className="card">

@@ -330,8 +330,147 @@ router.post('/scrape', auth, async (req, res) => {
       }
       
       console.log('Scraper task successfully queued:', stdout);
+      const match = stdout.match(/Task ID: ([a-f0-9\-]+)/);
+      if (match && match[1]) {
+        try {
+          batch.taskId = match[1];
+          batch.maxResults = maxResults;
+          batch.useProxy = useProxy;
+          await batch.save();
+        } catch (dbErr) {
+          console.error('Failed to update task ID or parameters on batch:', dbErr);
+        }
+      }
       res.json({ message: 'Scraping task queued successfully in background', batchId: batch._id });
     });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Helper for Redis client
+const redis = require('redis');
+const redisClient = redis.createClient({ url: process.env.REDIS_URL || 'redis://localhost:6379' });
+redisClient.connect().catch(err => console.error('Redis client error in contact routes:', err));
+
+// Pause scraping task
+router.post('/scrape/pause', auth, async (req, res) => {
+  try {
+    const { batchId } = req.body;
+    if (!batchId) return res.status(400).json({ message: 'Batch ID is required' });
+    
+    // Set status to paused in Redis
+    await redisClient.set(`scraper:${batchId}:status`, 'paused');
+    
+    // Update batch status in MongoDB
+    await ScraperBatch.findOneAndUpdate(
+      { _id: batchId, userId: req.user._id },
+      { status: 'paused' }
+    );
+    
+    res.json({ message: 'Scraping task paused successfully' });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Resume scraping task
+router.post('/scrape/resume', auth, async (req, res) => {
+  try {
+    const { batchId } = req.body;
+    if (!batchId) return res.status(400).json({ message: 'Batch ID is required' });
+    
+    // Set status to running in Redis
+    await redisClient.set(`scraper:${batchId}:status`, 'running');
+    
+    // Update batch status in MongoDB
+    await ScraperBatch.findOneAndUpdate(
+      { _id: batchId, userId: req.user._id },
+      { status: 'running' }
+    );
+    
+    res.json({ message: 'Scraping task resumed successfully' });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Kill / stop scraping task
+router.post('/scrape/kill', auth, async (req, res) => {
+  try {
+    const { batchId } = req.body;
+    if (!batchId) return res.status(400).json({ message: 'Batch ID is required' });
+    
+    const batch = await ScraperBatch.findOne({ _id: batchId, userId: req.user._id });
+    if (!batch) return res.status(404).json({ message: 'Batch not found' });
+    
+    // Set status to killed in Redis
+    await redisClient.set(`scraper:${batchId}:status`, 'killed');
+    
+    // Terminate Celery task natively if taskId is available
+    if (batch.taskId) {
+      try {
+        const cmd = `../scraper/venv/bin/celery -A app.workers.celery_app control revoke ${batch.taskId} --terminate --signal SIGTERM`;
+        exec(cmd, { cwd: path.join(__dirname, '..') }, (err, stdout, stderr) => {
+          if (err) console.error('Failed to natively revoke task:', err);
+          else console.log('Celery task natively revoked:', stdout);
+        });
+      } catch (celeryErr) {
+        console.error('Celery revoke error:', celeryErr);
+      }
+    }
+    
+    // Update batch status in MongoDB
+    batch.status = 'failed';
+    batch.errorMessage = 'Terminated by user';
+    await batch.save();
+    
+    res.json({ message: 'Scraping task stopped successfully' });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Restart scraper using settings of a past batch
+router.post('/scrape/restart', auth, async (req, res) => {
+  try {
+    const { batchId } = req.body;
+    if (!batchId) return res.status(400).json({ message: 'Batch ID is required' });
+    
+    const oldBatch = await ScraperBatch.findOne({ _id: batchId, userId: req.user._id });
+    if (!oldBatch) return res.status(404).json({ message: 'Batch not found' });
+    
+    // Create new batch
+    const batch = new ScraperBatch({
+      userId: req.user._id,
+      query: oldBatch.query,
+      location: oldBatch.location,
+      status: 'running',
+      count: 0,
+      maxResults: oldBatch.maxResults || 20,
+      useProxy: oldBatch.useProxy || false
+    });
+    await batch.save();
+    
+    const cmd = `../scraper/venv/bin/python trigger_scrape.py --query "${batch.query.replace(/"/g, '\\"')}" --location "${batch.location.replace(/"/g, '\\"')}" --max_results ${batch.maxResults} --use_proxy ${batch.useProxy} --user_id "${req.user._id}" --batch_id "${batch._id}"`;
+    
+    exec(cmd, { cwd: path.join(__dirname, '..') }, async (error, stdout, stderr) => {
+      if (error || stdout.includes('ERROR:')) {
+        const errorMsg = stderr || stdout.trim() || error?.message || 'Unknown Python error';
+        batch.status = 'failed';
+        batch.errorMessage = errorMsg;
+        await batch.save();
+        return;
+      }
+      
+      const match = stdout.match(/Task ID: ([a-f0-9\-]+)/);
+      if (match && match[1]) {
+        batch.taskId = match[1];
+        await batch.save();
+      }
+    });
+    
+    res.json({ message: 'Scraping task restarted successfully', batchId: batch._id });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
