@@ -41,12 +41,12 @@ const Layout = ({ children }) => {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Sidebar */}
-      <div className="fixed inset-y-0 left-0 z-50 w-64 bg-white shadow-lg">
-        <div className="flex h-16 items-center justify-center border-b border-gray-200">
+      <div className="fixed inset-y-0 left-0 z-50 w-64 bg-white shadow-lg flex flex-col">
+        <div className="flex h-16 items-center justify-center border-b border-gray-200 flex-shrink-0">
           <h1 className="text-xl font-bold text-gray-900">Email Outreach</h1>
         </div>
         
-        <nav className="mt-8 px-4">
+        <nav className="mt-8 px-4 flex-1 overflow-y-auto pb-4">
           <ul className="space-y-2">
             {navigation.map((item) => {
               const Icon = item.icon;
@@ -72,7 +72,7 @@ const Layout = ({ children }) => {
         </nav>
 
         {/* User info */}
-        <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-gray-200">
+        <div className="p-4 border-t border-gray-200 flex-shrink-0 bg-white">
           <div className="flex items-center justify-between">
             <div className="flex items-center">
               <div className="h-8 w-8 bg-primary-600 rounded-full flex items-center justify-center">

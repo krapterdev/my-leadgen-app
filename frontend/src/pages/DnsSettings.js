@@ -10,7 +10,7 @@ const DnsSettings = () => {
   const queryClient = useQueryClient();
 
   const { data: dnsResponse, isLoading } = useQuery('dns', dnsAPI.getAll);
-  const dnsSettings = dnsResponse?.data || [];
+  const dnsSettings = dnsResponse?.data?.data || [];
 
   const saveMutation = useMutation(dnsAPI.save, {
     onSuccess: () => {

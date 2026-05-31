@@ -3,6 +3,14 @@ node_modules/
 jspm_packages/
 web_modules/
 
+# Production / Build outputs
+build/
+dist/
+out/
+.next/
+.serverless/
+
+
 # Python Virtual Environment
 venv/
 .venv/

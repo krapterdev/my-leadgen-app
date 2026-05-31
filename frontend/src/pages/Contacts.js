@@ -297,8 +297,8 @@ const Contacts = () => {
             className="input-field"
           >
             <option value="">All Company Ages (Startup/Established)</option>
-            <option value="STARTUP">Startup (< 3 years old)</option>
-            <option value="ESTABLISHED">Established (>= 3 years old)</option>
+            <option value="STARTUP">Startup (&lt; 3 years old)</option>
+            <option value="ESTABLISHED">Established (&gt;= 3 years old)</option>
             <option value="UNKNOWN">Unknown Age</option>
           </select>
         </div>

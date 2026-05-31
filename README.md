@@ -162,6 +162,7 @@ npm install
 npm run dev
 ```
 * **Kyun?**: Isse Express API start ho jayegi port `5001` par jo client requests handle karegi, aur background me Email/IMAP sending workers start honge.
+* **Troubleshooting Note**: Agar `nodemon: Permission denied` ki error aaye, to terminal me `chmod -R +x node_modules/.bin` command run karein.
 
 ---
 
@@ -173,6 +174,8 @@ npm install
 npm start
 ```
 * **Kyun?**: Isse aapka outreach portal `http://localhost:3000` par run hoga jahan aap live analytics, leads list aur mailbox settings dekh sakte hain.
+* **Troubleshooting Note**: React scripts run karne ke liye ensure karein ki aap interactive WSL shell (`bash -i`) use kar rahe hain taaki native Linux Node version run ho.
+
 
 ---
 
@@ -193,3 +196,47 @@ cd backend
 PYTHONPATH=. ../scraper/venv/bin/celery -A app.workers.celery_app worker --loglevel=info
 ```
 * **Kyun?**: Yeh celery worker background me running rahega. Jab bhi aap dashboard ya console se scraping trigger karenge, tasks automatically Redis pipeline ke through execute honge.
+
+---
+
+## 📖 Complete UI & Backend Operations Guide (New User Guide)
+
+Agar aap is project par naye hain, to yaha step-by-step bataya gaya hai ki dashboard ke kis menu me kya kaam hota hai aur system ko end-to-end kaise run karna hai.
+
+### 📌 UI Ke Saare Menus Aur Unka Kaam (Menu Explanations)
+
+1. **Dashboard (Main Home)**:
+   - **Kaam**: Pure system ka high-level overview. Yaha aapko total emails sent, reply rate, bounce rate aur click rates ke stats graphs ke sath dikhte hain.
+2. **Mailboxes (Email Account Connections)**:
+   - **Kaam**: Yaha aap wo email addresses add karte ho jahan se emails send karne hain (e.g. your professional Gmail or Outlook accounts).
+   - **Kaise use karein?**: "Add Mailbox" click karein. SMTP details (Host: `smtp.gmail.com`, Port: `587`) aur password ki jagah **Gmail App Password** enter karein (Original account password enter nahi karna). Add karne ke baad "Verify" button par click karein. Status `Verified` hona zaroori hai.
+3. **Contacts (Lead Management & Scraper)**:
+   - **Kaam**: Yeh leads ka database repository hai. Yaha aap manually contacts add kar sakte hain, CSV file upload kar sakte hain, ya direct scraper trigger kar sakte hain.
+   - **Scraper Engine**: Is page par "Launch Scraper" button hai. Waha query likhein (e.g. `Web Development Noida`) aur limit set karein. Celery worker ise run karega aur contacts database me load ho jayenge.
+4. **Templates (Outreach Message Drafts)**:
+   - **Kaam**: Warm email templates manage karne ke liye.
+   - **Placeholders**: Template likhte waqt `{{firstName}}`, `{{company}}` templates use karein. Send hote waqt system automatically lead ke real details replace kar dega (e.g., `Hello {{firstName}}` turns into `Hello Sahil`).
+5. **Campaigns (Email Sequences)**:
+   - **Kaam**: Pure outreach execution ka module.
+   - **Outreach Sequence**: Campaign create karein, targets list (contacts) select karein, send karne ke liye mailbox select karein, aur sequence (Step 1, Step 2 after 24 hours, etc.) template attach karein. Campaign ko "Start" click karte hi email flow chalu ho jata hai.
+6. **Replies (Response Detection)**:
+   - **Kaam**: IMAP Reply Detection worker inbox scan karta hai. Agar kisi lead ne reply kiya, to unka response replies portal me load hota hai aur unhe campaign sequence se auto-remove kar diya jata hai taaki unhe follow-ups na jayein.
+7. **Email History (Audit Logs)**:
+   - **Kaam**: Har ek sent mail ki details time aur status (Sent/Failed/Opened) ke sath check karne ke liye.
+8. **Analytics (Detailed reports)**:
+   - **Kaam**: Campaign-wise filter lagakar sent metrics ki report dekhna.
+9. **DNS Settings (Authentication)**:
+   - **Kaam**: Professional email deliverability ke liye. Jab aap koi domain attach karte hain, to ye SPF, DKIM, aur DMARC records generate karta hai jise aapko apne domain manager (e.g. GoDaddy) me CNAME/TXT records me add karna hota hai. isse emails spam folder me nahi jaate.
+10. **Settings (User Profile)**:
+    - **Kaam**: User password changes aur profile info updates ke liye.
+
+---
+
+### 🚀 End-to-End User Flow (Kadam-by-Kadam Guide)
+
+1. **Step 1: Sign up & Login**: First time running par register page par jakar naya user account banayein aur dashboard me login karein.
+2. **Step 2: Connect Mailbox**: `Mailboxes` menu me jayein, "Add Mailbox" par click karein, and details verify karein.
+3. **Step 3: Collect Leads**: `Contacts` menu me jayein, "Launch Scraper" click karein, search query daalein, aur Celery background scraping chalayein.
+4. **Step 4: Create Template**: `Templates` menu me outreach template (with variables like `{{firstName}}`) banayein.
+5. **Step 5: Launch Campaign**: `Campaigns` menu me jayein, "Create Campaign" click karein, sequence schedule karein aur use active karein.
+6. **Step 6: Track & Manage Replies**: Background cron worker har 5 min me campaign chalaega, log verification `Email History` me dekhein, aur responses `Replies` menu me control karein.
