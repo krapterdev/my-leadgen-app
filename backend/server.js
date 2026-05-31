@@ -55,7 +55,7 @@ app.use('/api', limiter);
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
-app.use('/public', express.static(path.join(__name, 'public')));
+app.use('/public', express.static(path.join(__dirname, 'public')));
 
 // Database connection
 mongoose.connect(process.env.MONGODB_URI)
