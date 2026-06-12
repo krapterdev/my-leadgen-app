@@ -111,8 +111,8 @@ router.post('/:id/start', auth, async (req, res) => {
     campaign.startDate = new Date();
     await campaign.save();
 
-    // Send first step emails immediately
-    const firstStep = campaign.sequence[0];
+    // Queue first step emails in BullMQ sequence queue
+    const { emailSequenceQueue } = require('../queues/emailQueue');
     let successCount = 0;
     let errorCount = 0;
     const errors = [];
@@ -128,56 +128,42 @@ router.post('/:id/start', auth, async (req, res) => {
         continue;
       }
       
-      console.log(`📤 Sending to: ${contact.email}`);
+      console.log(`🚀 Queueing Step 1 for: ${contact.email}`);
       try {
-        await sendUsingMailbox(
-          campaign.mailboxId._id,
-          contact.email,
-          firstStep.subject,
-          firstStep.body,
-          {
-            campaignId: campaign._id,
-            contactId: contact._id,
-            stepNumber: 1,
-            campaignRun: campaign.currentRun || 1
-          }
+        await emailSequenceQueue.add(
+          `step-${campaign._id}-${contact._id}-0`,
+          { campaignId: campaign._id, contactId: contact._id, stepIndex: 0 },
+          { delay: 0 }
         );
         successCount++;
-        console.log(`✅ Email sent successfully to ${contact.email}`);
-      } catch (emailError) {
-        console.error(`❌ Failed to send to ${contact.email}:`, emailError.message);
+      } catch (queueError) {
+        console.error(`❌ Failed to queue for ${contact.email}:`, queueError.message);
         errorCount++;
-        errors.push(`${contact.email}: ${emailError.message}`);
+        errors.push(`${contact.email}: ${queueError.message}`);
       }
     }
 
-    // Update campaign stats
-    const updatedCampaign = await Campaign.findByIdAndUpdate(
-      campaign._id, 
-      { 
-        $inc: { 'stats.totalSent': successCount },
-        status: 'active',
-        startDate: new Date()
-      },
-      { new: true }
-    );
+    // Update campaign status
+    campaign.status = 'active';
+    campaign.startDate = new Date();
+    await campaign.save();
 
     const response = {
-      message: `Campaign started successfully. Sent ${successCount} emails.`,
+      message: `Campaign started successfully. Queued ${successCount} emails.`,
       stats: { 
         successCount, 
         errorCount, 
         totalContacts: campaign.contacts.length,
-        campaignStats: updatedCampaign.stats
+        campaignStats: campaign.stats
       }
     };
 
     if (errorCount > 0) {
-      response.message += ` ${errorCount} emails failed.`;
+      response.message += ` ${errorCount} email enqueues failed.`;
       response.errors = errors.slice(0, 5); // Show first 5 errors
     }
 
-    console.log(`Campaign start complete: ${successCount} sent, ${errorCount} failed`);
+    console.log(`Campaign start complete: ${successCount} queued, ${errorCount} failed`);
     res.json(response);
   } catch (error) {
     console.error('Campaign start error:', error);

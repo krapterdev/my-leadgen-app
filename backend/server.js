@@ -22,7 +22,8 @@ const webhookRoutes = require('./routes/webhook');
 const emailHistoryRoutes = require('./routes/emailHistory');
 
 const { startImapWorker } = require('./workers/imapWorker');
-const { startEmailWorker } = require('./workers/emailWorker');
+// Start BullMQ email worker to listen for outbox sequences
+require('./queues/emailWorker');
 
 const app = express();
 
@@ -51,6 +52,9 @@ const limiter = rateLimit({
   skip: (req) => req.ip === '127.0.0.1' || req.ip === '::1' // skip localhost
 });
 app.use('/api', limiter);
+
+// Stripe Router (mounted before JSON parser for raw webhook body validation)
+app.use('/api/stripe', require('./routes/stripe'));
 
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));
@@ -86,6 +90,29 @@ app.use('/api/email-history', emailHistoryRoutes);
 app.use('/api/email-status', require('./routes/emailStatus'));
 app.use('/t', require('./routes/t'));
 
+// Root-level unsubscribe handler (Step 13)
+app.get('/unsubscribe', async (req, res) => {
+  try {
+    const { leadId } = req.query;
+    if (!leadId) return res.status(400).send('Lead ID is required');
+    const Contact = require('./models/Contact');
+    await Contact.findByIdAndUpdate(leadId, { status: 'unsubscribed' });
+    res.send(`
+      <html>
+        <body style="font-family: Arial, sans-serif; text-align: center; padding: 50px; background: #f8fafc; color: #333;">
+          <div style="max-width: 500px; margin: 50px auto; background: white; padding: 40px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); border-top: 4px solid #4f46e5;">
+            <h2 style="color: #4f46e5; margin-bottom: 20px;">Successfully Unsubscribed</h2>
+            <p style="color: #4b5563; font-size: 16px; line-height: 1.6;">You have been unsubscribed from our mailing list. You will no longer receive follow-up emails from this campaign.</p>
+          </div>
+        </body>
+      </html>
+    `);
+  } catch (error) {
+    console.error('Unsubscribe error:', error);
+    res.status(500).send('Error processing unsubscribe request');
+  }
+});
+
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error('Server error:', err);
@@ -99,7 +126,6 @@ app.use((err, req, res, next) => {
 // Start workers
 try {
   startImapWorker();
-  startEmailWorker();
   console.log('✅ All Node workers started successfully');
 
   // Spawn Python Celery Worker automatically

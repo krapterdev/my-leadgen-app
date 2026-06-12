@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from 'react-query';
-import { settingsAPI, mailboxAPI } from '../utils/api';
+import { settingsAPI, mailboxAPI, stripeAPI } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
-import { User, Mail, Globe, Settings as SettingsIcon } from 'lucide-react';
+import { User, Mail, Globe, Settings as SettingsIcon, CreditCard } from 'lucide-react';
 
 const Settings = () => {
   const [activeTab, setActiveTab] = useState('profile');
@@ -44,6 +44,7 @@ const Settings = () => {
     { id: 'profile', name: 'Profile', icon: User },
     { id: 'mailboxes', name: 'Mailboxes', icon: Mail },
     { id: 'dns', name: 'DNS Settings', icon: Globe },
+    { id: 'billing', name: 'Billing & Plan', icon: CreditCard },
     { id: 'preferences', name: 'Preferences', icon: SettingsIcon },
   ];
 
@@ -98,6 +99,10 @@ const Settings = () => {
 
           {activeTab === 'dns' && (
             <DnsOverview dnsSettings={settings?.dnsSettings} />
+          )}
+
+          {activeTab === 'billing' && (
+            <BillingSettings user={settings?.user} />
           )}
 
           {activeTab === 'preferences' && (
@@ -442,6 +447,166 @@ const PreferencesSettings = ({ preferences, onUpdate, loading }) => {
           </button>
         </div>
       </form>
+    </div>
+  );
+};
+
+const BillingSettings = ({ user }) => {
+  const [loadingPlan, setLoadingPlan] = useState(null);
+
+  const handleUpgrade = async (plan) => {
+    setLoadingPlan(plan);
+    try {
+      const response = await stripeAPI.createCheckoutSession(plan);
+      if (response.data.url) {
+        window.location.href = response.data.url;
+      } else {
+        toast.error('Failed to initiate checkout session');
+      }
+    } catch (err) {
+      toast.error(err.message || 'Error redirecting to billing portal');
+    } finally {
+      setLoadingPlan(null);
+    }
+  };
+
+  const status = user?.subscription?.status || 'free';
+
+  return (
+    <div className="card">
+      <h2 className="text-lg font-bold text-gray-900 mb-2">Billing & Subscriptions</h2>
+      <p className="text-sm text-gray-500 mb-6">Manage your plan and billing preferences.</p>
+
+      <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-5 mb-8 flex justify-between items-center">
+        <div>
+          <span className="text-xs font-semibold text-indigo-700 bg-indigo-100 px-2.5 py-1 rounded-full uppercase tracking-wider">
+            Current Plan
+          </span>
+          <h3 className="text-xl font-bold text-indigo-950 mt-2 capitalize">{status} Plan</h3>
+          <p className="text-sm text-indigo-600 mt-1">
+            {status === 'free' && 'Unlock premium automation features with a paid plan.'}
+            {status === 'starter' && 'Great for growing lead outreach sequences.'}
+            {status === 'badshah' && 'All-inclusive empire access. Elite speed and AI capabilities.'}
+          </p>
+        </div>
+        <div className="text-right">
+          <span className="text-2xl font-extrabold text-indigo-950">
+            {status === 'free' && '$0'}
+            {status === 'starter' && '$49'}
+            {status === 'badshah' && '$149'}
+          </span>
+          <span className="text-indigo-600 text-sm">/month</span>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Starter Plan */}
+        <div className={`border rounded-xl p-6 relative flex flex-col justify-between ${status === 'starter' ? 'ring-2 ring-indigo-600 bg-indigo-50/10' : 'hover:border-gray-300'}`}>
+          <div>
+            <h4 className="text-md font-bold text-gray-900">Starter Plan</h4>
+            <p className="text-xs text-gray-500 mt-1">Perfect for growing businesses.</p>
+            <div className="mt-4 mb-6">
+              <span className="text-2xl font-extrabold text-gray-900">$49</span>
+              <span className="text-gray-500 text-xs">/month</span>
+            </div>
+            <ul className="space-y-3 text-xs text-gray-600">
+              <li className="flex items-center">
+                <svg className="h-4 w-4 text-green-500 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                </svg>
+                Up to 200 emails per day limit
+              </li>
+              <li className="flex items-center">
+                <svg className="h-4 w-4 text-green-500 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                </svg>
+                Basic SMTP rotation settings
+              </li>
+              <li className="flex items-center text-gray-400 line-through">
+                <svg className="h-4 w-4 text-gray-300 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+                Stealth Playwright scraper
+              </li>
+              <li className="flex items-center text-gray-400 line-through">
+                <svg className="h-4 w-4 text-gray-300 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+                Ollama Llama 3 AI Icebreakers
+              </li>
+            </ul>
+          </div>
+          <button
+            onClick={() => handleUpgrade('starter')}
+            disabled={status === 'starter' || loadingPlan}
+            className={`w-full mt-6 py-2 px-4 rounded-lg font-semibold text-center transition-all ${
+              status === 'starter'
+                ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
+            }`}
+          >
+            {status === 'starter' ? 'Current Plan' : loadingPlan === 'starter' ? 'Redirecting...' : 'Upgrade to Starter'}
+          </button>
+        </div>
+
+        {/* Badshah Plan */}
+        <div className={`border rounded-xl p-6 relative flex flex-col justify-between ring-2 ring-purple-600 bg-purple-50/5 ${status === 'badshah' ? 'bg-purple-50/10' : 'hover:border-purple-300'}`}>
+          <div className="absolute -top-3 right-6 bg-purple-600 text-white text-xs font-semibold px-3 py-1 rounded-full uppercase tracking-wider shadow-sm">
+            Most Popular
+          </div>
+          <div>
+            <h4 className="text-md font-bold text-gray-900">Badshah Plan</h4>
+            <p className="text-xs text-gray-500 mt-1">The ultimate lead-generation empire.</p>
+            <div className="mt-4 mb-6">
+              <span className="text-2xl font-extrabold text-gray-900">$149</span>
+              <span className="text-gray-500 text-xs">/month</span>
+            </div>
+            <ul className="space-y-3 text-xs text-gray-600">
+              <li className="flex items-center font-medium text-purple-950">
+                <svg className="h-4 w-4 text-purple-600 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                </svg>
+                Unlimited emails and campaigns
+              </li>
+              <li className="flex items-center font-medium text-purple-950">
+                <svg className="h-4 w-4 text-purple-600 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                </svg>
+                Premium dynamic SMTP rotation
+              </li>
+              <li className="flex items-center font-medium text-purple-950">
+                <svg className="h-4 w-4 text-purple-600 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                </svg>
+                Stealth Playwright scraper access
+              </li>
+              <li className="flex items-center font-medium text-purple-950">
+                <svg className="h-4 w-4 text-purple-600 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                </svg>
+                Ollama Llama 3 AI Icebreakers
+              </li>
+              <li className="flex items-center font-medium text-purple-950">
+                <svg className="h-4 w-4 text-purple-600 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                </svg>
+                Automated SMTP mailbox warmups
+              </li>
+            </ul>
+          </div>
+          <button
+            onClick={() => handleUpgrade('badshah')}
+            disabled={status === 'badshah' || loadingPlan}
+            className={`w-full mt-6 py-2 px-4 rounded-lg font-semibold text-center transition-all ${
+              status === 'badshah'
+                ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                : 'bg-purple-600 text-white hover:bg-purple-700 shadow-sm'
+            }`}
+          >
+            {status === 'badshah' ? 'Current Plan' : loadingPlan === 'badshah' ? 'Redirecting...' : 'Upgrade to Badshah'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 };

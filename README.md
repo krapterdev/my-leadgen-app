@@ -1,239 +1,172 @@
-# 🚀 MERN Email Outreach & Distributed OSINT Scraping Platform
+# 🚀 MERN + Bun Email Outreach & Distributed OSINT Scraping SaaS Platform
 
-This repository is a production-grade, enterprise-scale Lead Generation and Email Outreach automation system. It bridges a high-performance **MERN Stack (MongoDB, Express, React, Node.js)** outbound marketing backend with an **asynchronous Python Celery & Playwright Stealth scraping engine**.
+Welcome to the production-grade, enterprise-scale Lead Generation and Email Outreach Automation SaaS. This system integrates a high-performance **MERN Stack + Bun runtime backend** (Express, BullMQ, Redis, Mongoose) with a stealthy **Playwright OSINT scraping engine** and a **multi-tenant monetization pipeline (Stripe/Razorpay)**.
 
-Designed to scrape, enrich, deduplicate, and run warm email outreach to thousands of companies at **zero cost** without getting blocked.
+Designed to scrape, enrich, segment, and run personalized warm email sequences using LLM-generated icebreakers and smart SMTP rotation—completely on autopilot.
 
 ---
 
 ## 🏗️ System Architecture & Data Flow
 
-Below is the architectural representation of how data is fetched from Google Maps (GMB), processed through the anti-duplication pipeline, saved to MongoDB, and automatically targeted for warm outreach.
+Below is the end-to-end data flow showing how leads are extracted via stealth browser automation, cached and deduplicated using Redis, queued for sequential cold outreach, tracked for replies/opt-outs, and scaled under a multi-tenant subscription.
 
 ```mermaid
 graph TD
-    A[Celery Scraping Task initiated] --> B[Playwright Stealth Browser launched]
-    B --> C[Search Google Maps GMB results]
+    A[GMB Scraper Job Triggered] --> B[Playwright Stealth Browser launched]
+    B --> C[Search Google Maps results]
     C --> D[Extract Name, Website, Phone, Address]
     D --> E{Website exists?}
-    E -- Yes --> F[Normalize Website URL]
-    E -- No --> J[Fallback: Generate dummy email & save]
+    E -- Yes --> F[Normalized Website Crawl]
+    E -- No --> J[Fallback: Save info without website]
     
-    F --> G{Redis Bloom Filter check}
-    G -- "Exists (Duplicate)" --> H[Skip & Continue Scroll]
-    G -- "Not Exists" --> I[Mark URL in Bloom Filter/Set]
+    F --> G{Redis Bloom Filter / Set check}
+    G -- "Exists (Duplicate)" --> H[Skip Listing]
+    G -- "Not Exists" --> I[Cache website in Redis & parse HTML for emails]
     
     I --> J[Save Lead to MongoDB contacts collection]
-    J --> K[Available on React Admin Dashboard]
-    K --> L[Nodemailer Email Worker sends SMTP mail via Gmail/Outlook]
-    L --> M[IMAP Reply Detection Worker tracks replies & halts sequence]
+    J --> K[Available on Next.js/React Dashboard]
+    K --> L[Sequence Outbox Job pushed to BullMQ]
+    
+    L --> M[SMTP Rotation Engine selects active sender]
+    M --> N[Spintax & Local AI Icebreaker processes template]
+    N --> O[Nodemailer fires SMTP email with tracking pixel & unsubscribe link]
+    O --> P[IMAP polling worker / Unsubscribe Hook detects response]
+    P -- "Replied/Unsubscribed" --> Q[Lazy Validation: Sequence halts for target Lead]
 ```
 
 ---
 
-## 🛠️ Core Technology Stack
+## 🗺️ System Roadmap (Phases 1 to 5)
 
-### 1. Web App Backend & Frontend (Warm Outreach & Admin UI)
-* **React 18 + Tailwind CSS**: A premium, clean dashboard for managing mailboxes, tracking open/click rates, uploading CSVs, and configuring automated multi-step sequences.
-* **Node.js + Express**: Core REST API handling authentication, campaign orchestrations, DNS configurations, and rate-limiting.
-* **MongoDB (Mongoose)**: Document database storing campaigns, users, templates, mailboxes, and scraped contacts.
-* **Nodemailer + IMAP-Simple**: Handles warm email sending (via custom SMTP/Gmail App Passwords) and asynchronously polls mailboxes to detect replies and dynamically stop outreach sequences.
+This repository is built following a structured 5-phase core engineering roadmap:
 
-### 2. Scraping & Automation Engine (Background Workers)
-* **Celery (Python)**: Event-driven distributed task manager. Runs background scraping jobs concurrently.
-* **Redis**: Used as both the Celery message broker and the high-speed deduplication layer.
-* **Playwright + Playwright-Stealth**: Headless browser automation mimicking natural human interactions (random delays, scrolling, customized viewport sizes, and user-agent rotations) to bypass modern bot-detection engines.
-* **Redis Bloom Filter (or Set Fallback)**: Checks millions of websites in sub-milliseconds to avoid scraping or emailing the same company twice.
+### 🌟 Phase 1: Core Base Setup (Monolith Implementation)
+*   **Step 1: Environment Setup**: Configured with the **Bun** runtime for high-speed JS/TS execution. Express server runs using `bun server.js`.
+*   **Step 2: Database Layer Configuration**: MongoDB Atlas integration with schemas for **Sender** (accounts), **Campaign** (sequences), and **Lead** (contacts).
+*   **Step 3: Single-Email Fire & Tracking Pipeline**: Mail delivery via Nodemailer. Features an invisible tracking pixel (`<img src=".../assets/images/logo.png?leadId=XYZ" />`) masked as a standard logo asset to track real-time open rates.
 
----
+### ⚙️ Phase 2: Core Engineering & Queue Infrastructure
+*   **Step 4: Task Queue Setup (BullMQ + Redis)**: Outbound emails and heavy scraping jobs are offloaded to Redis-backed BullMQ queues as isolated, parallelizable jobs.
+*   **Step 5: Smart SMTP Account Rotation Engine**: Multi-account rotation prioritizing accounts with the lowest daily usage (`emailsSentToday < dailyLimit`), sorted by the oldest `lastUsed` timestamp, with randomized jitter delay to preserve sender health score.
+*   **Step 6: Smart Spintax Parser**: A recursive regex parser to resolve nested template variants (e.g., `{[Hi|Hello] {there|friend}}`) at send-time.
 
-## 🛡️ Anti-Blocking & Human Simulation Strategies
+### 🔍 Phase 3: Advanced Lead Scraping & Verification
+*   **Step 7: Playwright Headless Stealth Scraper**: Browser automation matching real-world WebGL fingerprints and headers to scrape directories. Scrapes website HTML and follows contact page links to harvest emails.
+*   **Step 8: Email Verification (Bounce Protection)**: Real-time DNS MX lookup validation (`dns.resolveMx`) and socket-level SMTP handshake check to filter dead/fake addresses before they go to queue.
+*   **Step 9: Free Local AI Icebreaker Integration**: Integration with a local **Ollama** server running **Llama 3 (8B)** to feed scraped website context and generate personalized outreach lines for zero-cost AI customization.
 
-To extract data scale (10,000+ records) continuously without IP blocks or CAPTCHA challenges, the engine implements these strategies:
+### 📈 Phase 4: Follow-up Automation, UX & Security
+*   **Step 10: Multi-Step Sequences (Follow-up Engine)**: Automated follow-up pipeline. Delayed jobs schedule subsequent steps. Uses "Lazy Validation" to verify lead status (`Cold`/`Opened`) at run-time, automatically skipping execution if the lead replied or unsubscribed.
+*   **Step 11: Real-Time Webhooks & Security Masking**: Server-Sent Events (SSE) / WebSockets stream scraper console logs and progress live to the UI. Tracking routes are masked to prevent spam filter flags.
+*   **Step 12: Advanced Lead Segmentation & Security Enclave**: Automatic status tags (e.g. `Hot Lead` if 3+ opens, `Warm Lead` if 1 open). Symmetric database encryption (Node `crypto`) protects critical SMTP/App passwords.
 
-1. **User-Agent Rotation**: Every browser context rotates clean, real-world user-agent strings representing Chrome, Firefox, and Safari on various desktop platforms.
-2. **Playwright-Stealth**: Modifies javascript bindings, WebGL fingerprints, canvas APIs, and navigator values (`navigator.webdriver = false`) to hide browser automation signatures.
-3. **Randomized Throttling (Human Typing & Scrolling)**: Inserts natural human delays (`random.uniform(2.0, 4.5)` seconds) between search clicks, scrolls, and interactions, avoiding predictable bot signatures.
-4. **Natural Mouse and Scroll Simulations**: Emulates soft mouse clicks and uses relative scrolling rather than instantaneous page jumps.
-
----
-
-## 🗂️ Project Directory Layout
-
-```bash
-my-leadgen-app/
-├── backend/                  # Node.js Core Backend
-│   ├── app/
-│   │   └── workers/          # Python Background Workers
-│   │       ├── celery_app.py # Celery initialization
-│   │       └── automation/
-│   │           └── scraper.py# GMB Playwright Stealth Scraper
-│   ├── models/               # Mongoose DB Schemas
-│   ├── routes/               # Express API Endpoints
-│   ├── workers/              # Node Workers (Email sending & IMAP reply detection)
-│   ├── test_scraper.py       # Standalone Scraper Tester
-│   └── requirements.txt      # Python Scraper dependencies
-├── frontend/                 # React UI Dashboard (Tailwind CSS)
-└── README.md                 # System Architecture & Documentation
-```
+### 💰 Phase 5: Warmup Network & SaaS Monetization
+*   **Step 13: Unsubscribe Link & Legal Opt-Out**: Automatic unsubscribe handling via a dynamic footer link. Clicking the link flags the lead as `Unsubscribed`, stopping active follow-up sequences.
+*   **Step 14: Automated Warmup Mode (Sender Safety)**: Auto-ramping warmup logic that increments a new mailbox's daily limits incrementally over time (e.g., Day 1: 5 emails, Day 2: 10 emails, Day 3: 20 emails).
+*   **Step 15: Multi-Tenant Architecture & Agency Dashboard**: Fully isolated workspace accounts linking Users to Organizations, allowing multi-tenant workspace separation.
+*   **Step 16: Subscription Gateway Integration**: Integration of Stripe/Razorpay Webhooks to automatically toggle user tiers (e.g., *Starter* to *Badshah*) and lift scraper limits.
 
 ---
 
-## ⚡ How to Setup & Run
+## ⚡ Setup & Execution Guide
 
 ### Prerequisites
-- Node.js (v18+)
-- Python (3.10+)
-- Docker & Docker Compose
+- **Bun** (v1.0+) installed on host machine
+- **Docker & Docker Compose**
+- **Ollama** (optional, for local AI processing)
 
-### 1. Spin up MongoDB, Redis, and Mongo Express Containers
-Make sure your Docker Desktop/Daemon is running, and start the containers in your WSL terminal:
+### 1. Start the Docker Services
+Start MongoDB, Redis, and Mongo Express (as message broker and data store) in the background:
 ```bash
 docker start my-mongodb my-redis my-mongo-express
 ```
-* **Database Management Portal (Mongo Express)**: Open [http://localhost:8081](http://localhost:8081) in your browser.
-  * **Username**: `admin`
-  * **Password**: `pass`
-  * *Note: A direct shortcut link to this dashboard has been integrated inside the sidebar navigation of your frontend application.*
+*(If you are setting up the proxy tool as well, run `docker compose up -d` in the `temp_proxy_tool` directory).*
 
-### 2. Configure Node.js Backend & Run
+### 2. Configure Environment Variables
+Create a `.env` file in the `backend/` folder:
+```env
+PORT=5001
+MONGODB_URI=mongodb://localhost:27017/email-outreach
+REDIS_URL=redis://localhost:6379/0
+JWT_SECRET=your_jwt_secret_token
+ENCRYPTION_KEY=a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6 # 32-character key for credentials encryption
+KRAPTER_PROXY_URL=http://localhost:2223          # API port for KrapterProxyTool
+KRAPTER_PROXY_KEY=sk_live_krapter_key_12345      # API Key for proxy retrieval
+STRIPE_SECRET_KEY=sk_test_...                    # For billing and subscription
+OLLAMA_HOST=http://localhost:11434               # Local LLM endpoint
+```
+
+### 3. Run Backend Services (with Bun)
 ```bash
 cd backend
-npm install
-npm run dev
+bun install
+bun server.js
 ```
-* **Note**: Nodemon server ko run karte hi **Celery background worker process automatically spawn (start) ho jayega**. Aapko alag terminal me Celery command run karne ki zaroori nahi hai! Sab kuch backend startup par backend itself execute aur manage karega.
+*Note: The Express server will automatically spawn the Celery background queue worker process. You do not need to start it in a separate terminal.*
 
-### 3. Frontend Dashboard Chalaein
-Ek naya terminal khol kar `frontend` folder me jayein aur interface start karein:
+### 4. Run Frontend Dashboard
 ```bash
 cd frontend
 npm install
 npm start
 ```
-* **Kyun?**: Isse aapka portal [http://localhost:3000](http://localhost:3000) par run hoga jahan aap campaigns check kar sakte hain.
+Go to [http://localhost:3000](http://localhost:3000) to view the Outreach portal dashboard.
 
-### 4. Run the Scraper Test Script (Optional standalone check)
-To verify that Playwright is fetching and storing leads into MongoDB:
+### 5. Local LLM Setup (Optional)
+Install Ollama, pull the Llama 3 model, and start the local model service:
 ```bash
-cd backend
-PYTHONPATH=. ../scraper/venv/bin/python test_scraper.py
+ollama pull llama3
+ollama serve
 ```
 
 ---
 
-## 🎓 Interview Cheat Sheet: "How does the System Work?"
+## 🛠️ Advanced Algorithms Quick Look
 
-If an interviewer asks how you built this, here is your playbook:
+### SMTP Rotation Algorithm
+```typescript
+// Core database selection query
+const sender = await Sender.findOneAndUpdate(
+  {
+    status: 'active',
+    emailsSentToday: { $lt: dailyLimit },
+    // If a new day has started, emailsSentToday is automatically reset to 0 in our controller
+  },
+  {
+    $inc: { emailsSentToday: 1 },
+    $set: { lastUsed: new Date() }
+  },
+  { sort: { lastUsed: 1 }, new: true }
+);
+```
 
-#### Q1: "How did you scale the lead generation without third-party API costs?"
-> *"I built a distributed scraping engine using Python, Playwright, and Celery. Instead of using expensive lead databases or scrapers, I automated headless browsers to query public business directories (like Google Maps), extract details, and save them directly to our database."*
-
-#### Q2: "How did you prevent scraping and emailing the same lead twice?"
-> *"I implemented a high-performance Redis cache layer. Whenever a company's website is found, it's checked against a Redis Bloom Filter (or a Redis Set). The check completes in sub-milliseconds, allowing the scraper to immediately skip duplicates without querying our primary MongoDB database, saving significant I/O."*
-
-#### Q3: "How did you bypass anti-bot mechanisms like IP blocks or CAPTCHAs?"
-> *"We simulate natural human behavior. We use `playwright-stealth` to strip out automated headers (`navigator.webdriver`), rotate real desktop User-Agents, and simulate human interactions by applying randomized sleep intervals (auto-throttling) and realistic scrolls. If scraping at an extreme scale, we route requests through a rotating proxy middleware."*
-
-#### Q4: "How does the email outreach automation flow work?"
-> *"Once contacts are added to MongoDB (either from the scraper or CSV upload), Express triggers an email outreach sequence. An asynchronous worker runs every 5 minutes using Node-Cron, sending personalized warm emails using SMTP. Simultaneously, an IMAP worker monitors the mailbox inbox; if a contact replies, their status immediately changes to 'replied', automatically pausing their email sequence."*
+### Spintax Parser Algorithm
+```typescript
+function parseSpintax(text: string): string {
+  const spintaxRegex = /\{[^{}]+\}/g;
+  let parsed = text;
+  while (spintaxRegex.test(parsed)) {
+    parsed = parsed.replace(spintaxRegex, (match) => {
+      const choices = match.slice(1, -1).split('|');
+      return choices[Math.floor(Math.random() * choices.length)];
+    });
+  }
+  return parsed;
+}
+```
 
 ---
 
-## 🏁 Step-by-Step Project Explanation & Execution Guide (Hindi & English)
+## 🎓 Technical Interview Q&A ("How does the System Work?")
 
-### 📌 Project Kya Hai? (What is this project?)
-Yeh project ek **Automated Lead Generation and Outreach Platform** hai. Iske do main parts hain:
-1. **Node.js/React App (Outreach & Dashboard)**: Jahan aap campaigns create karte ho, mailboxes attach karte ho (Gmail/Outlook), dashboard me status dekhte ho, aur emails automatic schedule hote hain.
-2. **Python/Playwright Scraper & Celery (Lead Finder)**: Jo Google Maps par search karke automatically company ke details (Name, Website, Phone, Rating) nikalta hai aur unhe direct database (MongoDB) me save kar deta hai bina block hue. Redis duplicates check karta hai taaki same client ko do baar mail na jaye.
+#### Q1: "How does the system prevent getting blocked during large-scale scraping?"
+> *“We use Playwright Chromium loaded with the `playwright-extra` stealth module, which alters browser navigator headers (disabling `navigator.webdriver`), mimics WebGL graphics cards, and randomizes user-agents. Additionally, we integrate human-like sleep patterns (jitter) and route outbound scraping requests through our custom `KrapterProxyTool` rotating proxy API.”*
 
----
+#### Q2: "How is the outbound campaign sequence protected from emailing warm leads who replied?"
+> *“We implement a MERN + BullMQ delayed queue structure. When a campaign email is fired, the next sequence step is pushed into Redis as a delayed job. When that job is popped for execution, we perform a 'Lazy Validation' check. We query MongoDB first: if the lead's status has updated to 'Replied' or 'Unsubscribed', the job is instantly discarded. This avoids expensive task cancellation operations inside Redis.”*
 
-### 🚀 Step-by-Step Project Run Kaise Karein? (Execution Steps)
+#### Q3: "How do you protect sensitive data like users' SMTP credentials and app passwords?"
+> *“We use AES-256-GCM symmetric encryption (via the native Node `crypto` library). Before saving SMTP settings to MongoDB, passwords are encrypted with a server-level secret key. The raw string is never exposed to the database, protecting details from database dumps.”*
 
-#### **Step 1: Docker Containers Start Karein**
-Sabse pehle check karein ki Docker Desktop chal raha hai, fir WSL terminal khol kar MongoDB, Redis aur Mongo Express start karein:
-```bash
-docker start my-mongodb my-redis my-mongo-express
-```
-
-#### **Step 2: Node.js Backend Server Chalaein**
-Terminal me `backend` folder me jayein aur application server start karein:
-```bash
-cd backend
-npm run dev
-```
-* **Kyun?**: Isse Express API start ho jayegi port `5001` par jo client requests handle karegi, aur background me Nodemailer/IMAP workers start honge. Aur **Celery worker auto-spawn command background process me automatically start ho jayegi**.
-
-#### **Step 3: Frontend Dashboard Chalaein**
-Ek naya terminal khol kar `frontend` folder me jayein aur interface start karein:
-```bash
-cd frontend
-npm start
-```
-* **Kyun?**: Isse aapka outreach portal [http://localhost:3000](http://localhost:3000) par run hoga.
-
-#### **Step 4: Scraper Live Status & Database UI Management**
-- **Live Scraping Status**: Jab aap `Contacts` menu me jakar **Launch Scraper** trigger karenge, to modal window ke under ek beautiful progress bar, logs message aur live scraped leads list preview real-time popup ho jayegi!
-- **Database Manage (PhpMyAdmin style)**: [http://localhost:8081](http://localhost:8081) open karein. **Username: admin** aur **Password: pass** enter karke MongoDB collections (contacts, campaigns, users) ko direct manage aur view karein.
-
----
-
-## 📖 Complete UI & Backend Operations Guide (New User Guide)
-
-Agar aap is project par naye hain, to yaha step-by-step bataya gaya hai ki dashboard ke kis menu me kya kaam hota hai aur system ko end-to-end kaise run karna hai.
-
-### 📌 UI Ke Saare Menus Aur Unka Kaam (Menu Explanations)
-
-1. **Dashboard (Main Home)**:
-   - **Kaam**: Pure system ka high-level overview. Yaha aapko total emails sent, reply rate, bounce rate aur click rates ke stats graphs ke sath dikhte hain.
-2. **Mailboxes (Email Account Connections)**:
-   - **Kaam**: Yaha aap wo email addresses add karte ho jahan se emails send karne hain (e.g. your professional Gmail or Outlook accounts).
-   - **Kaise use karein?**: "Add Mailbox" click karein. SMTP details (Host: `smtp.gmail.com`, Port: `587`) aur password ki jagah **Gmail App Password** enter karein (Original account password enter nahi karna). Add karne ke baad "Verify" button par click karein. Status `Verified` hona zaroori hai.
-3. **Contacts (Lead Management & Scraper)**:
-   - **Kaam**: Yeh leads ka database repository hai. Yaha aap manually contacts add kar sakte hain, CSV file upload kar sakte hain, ya direct scraper trigger kar sakte hain.
-   - **Scraper Engine**: Is page par "Launch Scraper" button hai. Waha query likhein (e.g. `Web Development Noida`) aur limit set karein. Celery worker ise run karega aur contacts database me load ho jayenge.
-4. **Templates (Outreach Message Drafts)**:
-   - **Kaam**: Warm email templates manage karne ke liye.
-   - **Placeholders**: Template likhte waqt `{{firstName}}`, `{{company}}` templates use karein. Send hote waqt system automatically lead ke real details replace kar dega (e.g., `Hello {{firstName}}` turns into `Hello Sahil`).
-5. **Campaigns (Email Sequences)**:
-   - **Kaam**: Pure outreach execution ka module.
-   - **Outreach Sequence**: Campaign create karein, targets list (contacts) select karein, send karne ke liye mailbox select karein, aur sequence (Step 1, Step 2 after 24 hours, etc.) template attach karein. Campaign ko "Start" click karte hi email flow chalu ho jata hai.
-6. **Replies (Response Detection)**:
-   - **Kaam**: IMAP Reply Detection worker inbox scan karta hai. Agar kisi lead ne reply kiya, to unka response replies portal me load hota hai aur unhe campaign sequence se auto-remove kar diya jata hai taaki unhe follow-ups na jayein.
-7. **Email History (Audit Logs)**:
-   - **Kaam**: Har ek sent mail ki details time aur status (Sent/Failed/Opened) ke sath check karne ke liye.
-8. **Analytics (Detailed reports)**:
-   - **Kaam**: Campaign-wise filter lagakar sent metrics ki report dekhna.
-9. **DNS Settings (Authentication)**:
-   - **Kaam**: Professional email deliverability ke liye. Jab aap koi domain attach karte hain, to ye SPF, DKIM, aur DMARC records generate karta hai jise aapko apne domain manager (e.g. GoDaddy) me CNAME/TXT records me add kama hota hai. isse emails spam folder me nahi jaate.
-10. **Settings (User Profile)**:
-    - **Kaam**: User password changes aur profile info updates ke liye.
-
----
-
-### 🚀 End-to-End User Flow (Kadam-by-Kadam Guide)
-
-1. **Step 1: Sign up & Login**: First time running par register page par jakar naya user account banayein aur dashboard me login karein.
-2. **Step 2: Connect Mailbox**: `Mailboxes` menu me jayein, "Add Mailbox" par click karein, and details verify karein.
-3. **Step 3: Collect Leads**: `Contacts` menu me jayein, "Launch Scraper" click karein. Ab aapko **Search Query** (e.g. `Software Companies`) aur **Location** (e.g. `Noida`) ke do alag fields milenge. Inhe fill karke Celery background scraping chalayein.
-4. **Step 4: Batch Management**: Har scraping job ek unique batch banayegi. Aap `Contacts` page par "All Scraper Batches" dropdown me se kisi ek batch ko select karke leads ko filter kar sakte hain. Data mix nahi hoga.
-5. **Step 5: Create Template**: `Templates` menu me outreach template (with variables like `{{firstName}}`) banayein.
-6. **Step 6: Launch Campaign**: `Campaigns` menu me jayein, "Create Campaign" click karein. Step 3 (Select Contacts) me **Select by Scraper Batch** option choose karein aur dropdown se apni target batch select karein. Isse us batch ke saare contacts automatic select ho jayenge.
-7. **Step 7: Track & Manage Replies**: Background cron worker har 5 min me campaign chalaega, log verification `Email History` me dekhein, aur responses `Replies` menu me control karein.
-8. **Step 8: Database Management**: Dashboard ke **Database (Mongo)** side link par click karein. Username: `admin` aur Password: `pass` enter karke local data collections manage karein.
-
----
-
-## 🛠️ Troubleshooting & Issues
-
-### 1. Redis Port 6379 Conflict (Address Already in Use)
-Agar docker-compose status check karte time `my-redis` end-point par `address already in use` error aaye, toh iska matlab aapke WSL environment me native redis-server running state me hai.
-Ise fix karne ke liye apne WSL terminal me yeh command run karein:
-```bash
-sudo service redis-server stop
-```
-Iske baad dobara docker containers start karein:
-```bash
-docker start my-mongodb my-redis my-mongo-express
-```
+#### Q4: "Why did you use Bun and Redis sets/bloom filters in this architecture?"
+> *“Bun provides high-performance TypeScript execution out of the box with faster HTTP performance than standard Node.js. We use Redis sets as a high-speed de-duplication layer: before crawling any website or saving a lead, we check it against Redis in sub-milliseconds. This keeps the database light and prevents duplicate emails from being sent to the same client.”*

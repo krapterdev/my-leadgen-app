@@ -95,6 +95,10 @@ export const settingsAPI = {
   updatePreferences: (data) => api.put('/settings/preferences', data),
 };
 
+export const stripeAPI = {
+  createCheckoutSession: (plan) => api.post('/stripe/create-checkout-session', { plan }),
+};
+
 export const templateAPI = {
   getAll: () => api.get('/template'),
   create: (data) => api.post('/template', data),

@@ -52,6 +52,18 @@ const mailboxSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
+  warmupStartDate: {
+    type: Date,
+    default: () => new Date()
+  },
+  warmupStartLimit: {
+    type: Number,
+    default: 5
+  },
+  warmupIncrement: {
+    type: Number,
+    default: 5
+  },
   status: {
     type: String,
     enum: ['active', 'paused', 'error'],

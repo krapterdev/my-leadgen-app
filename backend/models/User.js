@@ -25,6 +25,19 @@ const userSchema = new mongoose.Schema({
   isVerified: {
     type: Boolean,
     default: false
+  },
+  organizationId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Organization'
+  },
+  subscription: {
+    status: {
+      type: String,
+      enum: ['free', 'starter', 'badshah'],
+      default: 'free'
+    },
+    stripeCustomerId: String,
+    stripeSubscriptionId: String
   }
 }, {
   timestamps: true
