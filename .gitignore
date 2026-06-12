@@ -58,3 +58,9 @@ Thumbs.db
 *.njsproj
 *.sln
 *.swp
+
+# Nested/Isolated Repositories and Local Tools
+temp_proxy_tool/
+scraper/venv/
+backend/app/workers/__pycache__/
+backend/app/workers/automation/__pycache__/
